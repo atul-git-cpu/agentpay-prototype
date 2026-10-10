@@ -2,21 +2,13 @@
  * Creates two TESTNET-ONLY wallets (buyer + seller) and writes them to .env.
  * Refuses to overwrite existing keys, so it's safe to run twice.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { loadEnvText, hasEnvValue, setEnvValue, saveEnvText } from "../lib/env-file.js";
 
-const envPath = new URL("../../.env", import.meta.url);
-const examplePath = new URL("../../.env.example", import.meta.url);
-
-let env = existsSync(envPath)
-  ? readFileSync(envPath, "utf8")
-  : readFileSync(examplePath, "utf8");
-
-const hasValue = (name: string) => new RegExp(`^${name}=.+`, "m").test(env);
+let env = loadEnvText();
+const hasValue = (name: string) => hasEnvValue(env, name);
 const setValue = (name: string, value: string) => {
-  env = new RegExp(`^${name}=`, "m").test(env)
-    ? env.replace(new RegExp(`^${name}=.*$`, "m"), `${name}=${value}`)
-    : `${env.trimEnd()}\n${name}=${value}\n`;
+  env = setEnvValue(env, name, value);
 };
 
 if (hasValue("BUYER_PRIVATE_KEY") && hasValue("SELLER_PRIVATE_KEY")) {
@@ -32,7 +24,7 @@ const seller = privateKeyToAccount(sellerKey);
 setValue("BUYER_PRIVATE_KEY", buyerKey);
 setValue("SELLER_PRIVATE_KEY", sellerKey);
 setValue("SELLER_ADDRESS", seller.address);
-writeFileSync(envPath, env);
+saveEnvText(env);
 
 console.log("Created two testnet-only wallets and saved them to .env (never commit this file).\n");
 console.log(`  Buyer  (the agent that pays): ${buyer.address}`);

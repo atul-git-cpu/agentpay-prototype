@@ -27,8 +27,8 @@ licensed partner for India, a local rail, or SWIFT as the fallback.
 
 ## Build phases
 
-1. **Payment rail** — paywalled seller API, buyer pays per call, reconciliation ← *you are here*
-2. **AI agent** — model decides which calls to make and pays within a budget
+1. **Payment rail** — paywalled seller API, buyer pays per call, reconciliation ✅
+2. **AI agent** — model decides which calls to make and pays within a budget ← *you are here*
 3. **Ledger** — Postgres ledger, per-seller balances, fiat-denominated statements
 4. **Jurisdiction engine + payouts** — USDC / India partner / local rail / SWIFT routing
 5. **Compliance trail** — agent → payment → call → seller → invoice → settlement → bank
@@ -84,6 +84,58 @@ npm run balance     # buyer and seller balances
 Settlement is batched, so statuses move `received → batched → confirmed → completed`
 over time. Run `reconcile` again after a few minutes to see them progress.
 
+---
+
+## Phase 2: the AI agent
+
+An AI agent gets a business task ("verify these vendors' GSTINs"), decides which calls are
+worth paying for, and pays per call from a **Circle developer-controlled wallet**. The
+wallet's key never leaves Circle: each payment is signed through Circle's `signTypedData` API.
+
+Guardrails are enforced in code, not left to the model:
+- hard spend budget (`AGENT_BUDGET_USDC`) and call cap (`AGENT_MAX_CALLS`)
+- never pays twice for the same input (cached)
+
+### 1. Add your keys to `.env`
+Open `.env` in the Codespace editor and fill in:
+```
+CIRCLE_API_KEY=<your testnet key from console.circle.com>
+LLM_API_KEY=<your Gemini key from aistudio.google.com>
+```
+Never commit `.env` or paste keys into chat.
+
+### 2. Create the agent's Circle wallet (one-time)
+```bash
+npm run circle:setup
+```
+Registers an Entity Secret, creates a wallet set and an EOA wallet on Arc Testnet, and saves
+the IDs to `.env`. **Download `data/circle-recovery-file.dat`** (right-click → Download) and keep it safe.
+
+### 3. Fund the agent
+```bash
+npm run agent:fund
+```
+Deposits `AGENT_FUND_USDC` (default 0.5) from the Phase 1 buyer wallet into Gateway,
+owned by the agent's address (`depositFor`). The agent needs no gas: it only signs.
+
+### 4. Run the agent (seller must be running in another terminal)
+```bash
+npm run agent
+# or your own task:
+npm run agent -- "Check whether 27AAPFU0939F1ZV is a valid GSTIN"
+```
+You'll see its reasoning, each tool call, and each Circle-signed payment.
+Then `npm run reconcile` shows the agent's payments settling like any other.
+
+### Switching the model
+The agent talks to any OpenAI-compatible chat API with tool calling. To use Groq instead of Gemini:
+```
+LLM_BASE_URL=https://api.groq.com/openai/v1/
+LLM_MODEL=openai/gpt-oss-120b
+LLM_API_KEY=<groq key>
+```
+If Gemini returns "model not found", set `LLM_MODEL` to a model id your key can use (listed in AI Studio).
+
 ## Scripts
 
 | Command | What it does |
@@ -94,6 +146,9 @@ over time. Run `reconcile` again after a few minutes to see them progress.
 | `npm run buy` | Buyer pays per call, capped at `MAX_SPEND_USDC` |
 | `npm run reconcile` | Matches recorded payments to Gateway transfers |
 | `npm run balance` | Shows wallet and Gateway balances |
+| `npm run circle:setup` | Phase 2: entity secret + Circle wallet for the agent |
+| `npm run agent:fund` | Phase 2: fund the agent's Gateway balance |
+| `npm run agent` | Phase 2: run the AI agent |
 | `npm run typecheck` | TypeScript check |
 
 ## Troubleshooting

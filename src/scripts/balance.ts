@@ -15,4 +15,11 @@ console.log(`  gateway available: ${b.gateway.formattedAvailable}\n`);
 console.log(`Seller ${sellerAddress}`);
 console.log(`  wallet:            ${s.wallet.formatted}`);
 console.log(`  gateway available: ${s.gateway.formattedAvailable}`);
+const agentAddress = process.env.AGENT_WALLET_ADDRESS as Address | undefined;
+if (agentAddress) {
+  const a = await buyer.getBalances(agentAddress);
+  console.log(`\nAgent  ${agentAddress} (Circle-managed)`);
+  console.log(`  wallet:            ${a.wallet.formatted}`);
+  console.log(`  gateway available: ${a.gateway.formattedAvailable}`);
+}
 console.log("\n(Seller earnings land in its Gateway balance once Circle settles the batch.)");

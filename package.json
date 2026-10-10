@@ -9,12 +9,16 @@
     "seller": "tsx src/seller/server.ts",
     "buy": "tsx src/buyer/pay.ts",
     "reconcile": "tsx src/recon/reconcile.ts",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "circle:setup": "tsx src/scripts/circle-setup.ts",
+    "agent:fund": "tsx src/scripts/agent-fund.ts",
+    "agent": "tsx src/agent/run.ts"
   },
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@circle-fin/developer-controlled-wallets": "^10.8.1",
     "@circle-fin/x402-batching": "^3.5.0",
     "@x402/core": "^2.28.0",
     "@x402/evm": "^2.28.0",

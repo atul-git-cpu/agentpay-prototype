@@ -27,7 +27,29 @@ export const config = {
   pricePerCall: process.env.PRICE_PER_CALL ?? "$0.002",
   maxSpendUsdc: Number(process.env.MAX_SPEND_USDC ?? 0.05),
   depositUsdc: process.env.DEPOSIT_USDC ?? "1",
+
+  // Phase 2: Circle developer-controlled wallet for the agent
+  circleApiKey: () => required("CIRCLE_API_KEY"),
+  circleEntitySecret: () => required("CIRCLE_ENTITY_SECRET"),
+  agentWalletId: () => required("AGENT_WALLET_ID"),
+  agentWalletAddress: () => required("AGENT_WALLET_ADDRESS"),
+  agentFundUsdc: process.env.AGENT_FUND_USDC ?? "0.5",
+  agentBudgetUsdc: Number(process.env.AGENT_BUDGET_USDC ?? 0.02),
+  agentMaxCalls: Number(process.env.AGENT_MAX_CALLS ?? 10),
+
+  // Phase 2: model used by the agent (any OpenAI-compatible chat API)
+  llmApiKey: () => required("LLM_API_KEY"),
+  llmBaseUrl:
+    process.env.LLM_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta/openai/",
+  llmModel: process.env.LLM_MODEL ?? "gemini-3.8-flash",
 };
 
+/** Circle's blockchain identifier for Arc Testnet (developer-controlled wallets API). */
+export const CIRCLE_BLOCKCHAIN = "ARC-TESTNET" as const;
+
+/** Log of each agent run: reasoning, tool calls and payments. */
+export const AGENT_RUNS_FILE = new URL("../../data/agent-runs.jsonl", import.meta.url);
+/** Circle entity-secret recovery file — keep it; it's the only way to reset the secret. */
+export const RECOVERY_FILE = new URL("../../data/circle-recovery-file.dat", import.meta.url);
 /** Ledger file written by the seller as each payment settles. */
 export const SETTLEMENTS_FILE = new URL("../../data/settlements.jsonl", import.meta.url);
