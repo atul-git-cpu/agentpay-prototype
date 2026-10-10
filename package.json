@@ -12,7 +12,11 @@
     "typecheck": "tsc",
     "circle:setup": "tsx src/scripts/circle-setup.ts",
     "agent:fund": "tsx src/scripts/agent-fund.ts",
-    "agent": "tsx src/agent/run.ts"
+    "agent": "tsx src/agent/run.ts",
+    "db:migrate": "tsx src/scripts/db-migrate.ts",
+    "db:import": "tsx src/scripts/db-import.ts",
+    "ledger": "tsx src/scripts/ledger.ts",
+    "statement": "tsx src/scripts/statement.ts"
   },
   "author": "",
   "license": "ISC",
@@ -24,11 +28,13 @@
     "@x402/evm": "^2.28.0",
     "dotenv": "^18.0.7",
     "express": "^5.3.0",
+    "pg": "^8.23.1",
     "viem": "^2.57.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },

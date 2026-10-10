@@ -19,7 +19,7 @@ licensed partner for India, a local rail, or SWIFT as the fallback.
 | USDC payout to permitted sellers | **Real** (Phase 4) | Gateway withdrawal |
 | AI agent that decides and pays | **Real** (Phase 2) | Free model API (Gemini; Groq backup) via one adapter |
 | Agent wallet | **Real** (Phase 2) | Circle developer-controlled wallet |
-| Ledger + statements | **Real** (Phase 3) | Postgres (Neon) |
+| Ledger + statements | **Real** (Phase 3) | Double-entry ledger in Postgres (Neon) |
 | GSTIN lookup | Mock data, real checksum | Format and check-digit validation are real |
 | India payout (USD→INR, e-FIRA, purpose code, T+2) | **Mock** (Phase 4) | Stands in for a licensed partner such as Xflow |
 | Local rail / SWIFT payouts | **Mock** (Phase 4) | Realistic delays, fees and failures |
@@ -28,8 +28,8 @@ licensed partner for India, a local rail, or SWIFT as the fallback.
 ## Build phases
 
 1. **Payment rail** — paywalled seller API, buyer pays per call, reconciliation ✅
-2. **AI agent** — model decides which calls to make and pays within a budget ← *you are here*
-3. **Ledger** — Postgres ledger, per-seller balances, fiat-denominated statements
+2. **AI agent** — model decides which calls to make and pays within a budget ✅
+3. **Ledger** — Postgres ledger, per-seller balances, fiat-denominated statements ← *you are here*
 4. **Jurisdiction engine + payouts** — USDC / India partner / local rail / SWIFT routing
 5. **Compliance trail** — agent → payment → call → seller → invoice → settlement → bank
 6. **Dashboard + public link** — Next.js UI on Vercel
@@ -136,6 +136,49 @@ LLM_API_KEY=<groq key>
 ```
 If Gemini returns "model not found", set `LLM_MODEL` to a model id your key can use (listed in AI Studio).
 
+---
+
+## Phase 3: the ledger
+
+Payments move from a text log into a **double-entry ledger in Postgres (Neon)**. Each seller
+has three balances, matching how Circle actually settles:
+
+| Balance | Meaning |
+|---|---|
+| **pending** | Buyer has paid; Circle hasn't settled the batch yet (`received` / `batched`) |
+| **available** | Circle settled it (`confirmed` / `completed`); ready to pay out |
+| **paid out** | Sent to the seller (Phase 4) |
+
+Every event posts balanced entries, every posting is idempotent (re-running reconciliation
+can't double-count), statuses never move backwards, and `npm run ledger` checks that all
+entries sum to zero.
+
+### 1. Add the database URL
+In `.env`: `DATABASE_URL=<your Neon connection string, starting with postgresql://>`
+
+### 2. Create the tables and register the seller
+```bash
+npm run db:migrate
+```
+Registers the Phase 1 seller as an **Indian** seller paid in **INR** via the licensed-partner
+route, with RBI purpose code **P0807** (information/data services — confirm with the AD bank).
+
+### 3. Import earlier payments and reconcile
+```bash
+npm run db:import    # the 11 payments from Phases 1-2 (idempotent)
+npm run reconcile    # pulls status from Circle; settled payments move pending -> available
+npm run ledger       # balances per seller + integrity check
+```
+**Restart the seller** (`Ctrl+C`, `npm run seller`) so new payments go straight into the ledger.
+
+### 4. Generate a usage statement
+```bash
+npm run statement
+npm run statement -- --seller 1 --from 2026-10-01 --to 2026-10-31
+```
+A fiat-denominated statement (USD + indicative INR, by buyer and by day, with the purpose code),
+saved to `data/statements/`. This is what the INR payout in Phase 4 is matched against.
+
 ## Scripts
 
 | Command | What it does |
@@ -149,6 +192,10 @@ If Gemini returns "model not found", set `LLM_MODEL` to a model id your key can 
 | `npm run circle:setup` | Phase 2: entity secret + Circle wallet for the agent |
 | `npm run agent:fund` | Phase 2: fund the agent's Gateway balance |
 | `npm run agent` | Phase 2: run the AI agent |
+| `npm run db:migrate` | Phase 3: create ledger tables, register the seller |
+| `npm run db:import` | Phase 3: import payments from the Phase 1-2 log |
+| `npm run ledger` | Phase 3: seller balances + integrity check |
+| `npm run statement` | Phase 3: fiat-denominated usage statement |
 | `npm run typecheck` | TypeScript check |
 
 ## Troubleshooting

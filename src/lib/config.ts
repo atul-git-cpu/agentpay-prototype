@@ -42,6 +42,10 @@ export const config = {
   llmBaseUrl:
     process.env.LLM_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta/openai/",
   llmModel: process.env.LLM_MODEL ?? "gemini-3.8-flash",
+
+  // Phase 3: ledger + statements
+  /** Indicative USD→INR rate for statements only. The real rate comes from the payout partner (Phase 4). */
+  usdInrRate: Number(process.env.USD_INR_RATE ?? 95),
 };
 
 /** Circle's blockchain identifier for Arc Testnet (developer-controlled wallets API). */

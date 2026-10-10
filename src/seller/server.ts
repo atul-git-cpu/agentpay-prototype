@@ -6,7 +6,7 @@
  * MOCK:  the GSTIN lookup itself (format and checksum checks are real).
  *
  * Every settled payment is written to data/settlements.jsonl, keyed by the
- * payment nonce. That file is the seed of the ledger (Phase 3).
+ * payment nonce, and (when DATABASE_URL is set) recorded in the Postgres ledger.
  */
 import express from "express";
 import { appendFile } from "node:fs/promises";
@@ -15,6 +15,8 @@ import { createGatewayMiddleware } from "@circle-fin/x402-batching/server";
 import { formatUnits } from "viem";
 import { config, ARC_TESTNET_NETWORK, GATEWAY_TESTNET_URL, SETTLEMENTS_FILE } from "../lib/config.js";
 import { validateGstin } from "../lib/gstin.js";
+import { getDatabase, hasDatabase } from "../db/client.js";
+import { recordPayment } from "../db/ledger.js";
 
 type SettlementRecord = {
   event: "settled" | "settle_failed";
@@ -63,7 +65,19 @@ gateway
       resource: paymentPayload.resource?.url,
     };
     await record(entry);
-    console.log(`  settled ${entry.amountUsdc} USDC from ${entry.payer} (nonce ${entry.nonce?.slice(0, 10)}…)`);
+    let ledgerNote = "";
+    if (hasDatabase() && entry.nonce && entry.payer) {
+      try {
+        const id = await recordPayment(getDatabase(), {
+          nonce: entry.nonce, sellerAddress: entry.payTo, payer: entry.payer,
+          amountAtomic: BigInt(entry.amountAtomic), network: entry.network, resource: entry.resource,
+        });
+        ledgerNote = id === null ? " [ledger: seller not registered — run db:migrate]" : ` [ledger #${id}: pending]`;
+      } catch (err) {
+        ledgerNote = ` [ledger error: ${(err as Error).message}]`; // never block the API response
+      }
+    }
+    console.log(`  settled ${entry.amountUsdc} USDC from ${entry.payer} (nonce ${entry.nonce?.slice(0, 10)}…)${ledgerNote}`);
   })
   .onSettleFailure(async ({ paymentPayload, requirements, error }) => {
     await record({
@@ -107,4 +121,5 @@ app.listen(config.port, () => {
   console.log(`Seller API listening on ${config.sellerBaseUrl}`);
   console.log(`  Paid endpoint: GET /v1/gstin/:gstin at ${config.pricePerCall} per call`);
   console.log(`  Payments go to: ${sellerAddress} (Arc Testnet)`);
+  console.log(`  Ledger: ${hasDatabase() ? "Postgres (DATABASE_URL)" : "off — set DATABASE_URL to enable"}`);
 });

@@ -4,3 +4,4 @@ data/*.jsonl
 *.log
 # Circle entity-secret recovery files (the SDK writes them to the project root)
 *.dat
+data/statements/
