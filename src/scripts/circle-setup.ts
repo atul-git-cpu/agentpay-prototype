@@ -35,9 +35,12 @@ if (hasEnvValue(env, "CIRCLE_ENTITY_SECRET")) {
   console.log("1/3 Registering a new entity secret with Circle…");
   try {
     const res = await registerEntitySecretCiphertext({ apiKey, entitySecret });
-    writeFileSync(RECOVERY_FILE, res.data?.recoveryFile ?? "");
-    console.log("    Registered. Recovery file saved to data/circle-recovery-file.dat");
-    console.log("    Download it from the Codespace and keep it safe — it's the only way to reset the secret.");
+    if (res.data?.recoveryFile) {
+      writeFileSync(RECOVERY_FILE, res.data.recoveryFile);
+      console.log("    Recovery file also saved to data/circle-recovery-file.dat");
+    }
+    console.log("    Download the recovery file (.dat) from the Codespace and keep it safe —");
+    console.log("    it's the only way to reset the entity secret. It is git-ignored.");
   } catch (err) {
     save("CIRCLE_ENTITY_SECRET", ""); // registration failed: clear it so the next run starts fresh
     console.error(`    Registration failed: ${(err as Error).message}`);
