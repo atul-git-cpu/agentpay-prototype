@@ -12,7 +12,7 @@ function required(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(
-      `Missing ${name} in .env. Run \`npm run wallet:new\` first (see README).`,
+      `Missing ${name} in .env. See the README for which setup step creates it.`,
     );
   }
   return value;

@@ -39,8 +39,7 @@ if (hasEnvValue(env, "CIRCLE_ENTITY_SECRET")) {
     console.log("    Registered. Recovery file saved to data/circle-recovery-file.dat");
     console.log("    Download it from the Codespace and keep it safe — it's the only way to reset the secret.");
   } catch (err) {
-    env = setEnvValue(env, "CIRCLE_ENTITY_SECRET", "");
-    saveEnvText(env);
+    save("CIRCLE_ENTITY_SECRET", ""); // registration failed: clear it so the next run starts fresh
     console.error(`    Registration failed: ${(err as Error).message}`);
     console.error(
       "    If your Circle account already has an entity secret registered, put that secret in\n" +
@@ -56,7 +55,7 @@ const circle = initiateDeveloperControlledWalletsClient({
 });
 
 // 2. Wallet set
-let walletSetId = process.env.CIRCLE_WALLET_SET_ID;
+let walletSetId = hasEnvValue(env, "CIRCLE_WALLET_SET_ID") ? process.env.CIRCLE_WALLET_SET_ID : undefined;
 if (walletSetId) {
   console.log("2/3 Wallet set: already in .env — skipping.");
 } else {
@@ -68,7 +67,7 @@ if (walletSetId) {
 }
 
 // 3. Agent wallet (EOA: required, since Gateway verifies payment signatures with ecrecover)
-if (process.env.AGENT_WALLET_ID && process.env.AGENT_WALLET_ADDRESS) {
+if (hasEnvValue(env, "AGENT_WALLET_ID") && hasEnvValue(env, "AGENT_WALLET_ADDRESS")) {
   console.log(`3/3 Agent wallet: already in .env (${process.env.AGENT_WALLET_ADDRESS}) — skipping.`);
 } else {
   const res = await circle.createWallets({
