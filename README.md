@@ -31,7 +31,7 @@ licensed partner for India, a local rail, or SWIFT as the fallback.
 2. **AI agent** — model decides which calls to make and pays within a budget ✅
 3. **Ledger** — Postgres ledger, per-seller balances, fiat-denominated statements ✅
 4. **Jurisdiction engine + payouts** — USDC / India partner / local rail / SWIFT routing ✅
-5. **Compliance trail** — agent → payment → call → seller → invoice → settlement → bank ← *you are here*
+5. **Compliance trail** — agent → payment → call → seller → invoice → settlement → bank ✅
 6. **Dashboard + public link** — Next.js UI on Vercel ← *next*
 
 ---
