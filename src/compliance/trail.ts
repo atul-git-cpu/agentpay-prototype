@@ -185,10 +185,18 @@ export function renderTrail(t: Trail, highlight?: number): string {
   for (const c of agentCalls) runs.set(c.agent!.runStartedAt, [...(runs.get(c.agent!.runStartedAt) ?? []), c]);
   for (const [at, cs] of runs) {
     const a = cs[0].agent!;
-    L.push("", `**AI agent run ${time(at)} UTC** (model ${a.model}): ${a.runPaidCalls} paid call(s), ${a.runSkipped} duplicate(s) reused without paying`);
+    L.push("", `**AI agent run ${time(at)} UTC** (model ${a.model}): ${a.runPaidCalls} paid call(s)${a.runSkipped ? `, ${a.runSkipped} repeat(s) answered from cache without paying` : ""}`);
     L.push(`- Task: ${a.task.replace(/\s+/g, " ").slice(0, 300)}${a.task.length > 300 ? "…" : ""}`);
-    for (const c of cs) {
-      L.push(`- Paid for \`${c.agent!.input}\`${c.agent!.reasoning ? ` — agent's reasoning: "${c.agent!.reasoning.replace(/\s+/g, " ").slice(0, 200)}"` : ""}`);
+    const quote = (r: string) => `> ${r.replace(/\s+/g, " ").slice(0, 400)}${r.length > 400 ? "…" : ""}`;
+    const reasons = [...new Set(cs.map((c) => c.agent!.reasoning).filter(Boolean))] as string[];
+    if (reasons.length === 1) {
+      L.push("- Agent's reasoning before paying:", "", quote(reasons[0]), "");
+      L.push(`- Paid for: ${cs.map((c) => `\`${c.agent!.input}\``).join(", ")}`);
+    } else {
+      for (const c of cs) {
+        L.push(`- Paid for \`${c.agent!.input}\``);
+        if (c.agent!.reasoning) L.push("", quote(c.agent!.reasoning), "");
+      }
     }
   }
 
