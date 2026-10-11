@@ -19,6 +19,7 @@ import type { Database } from "../db/client.js";
 import { createPayout, completePayout, failPayout, markProcessing } from "../db/payouts.js";
 import { routeFor, PLATFORM_FEE_BPS, type Route } from "./jurisdiction.js";
 import { partnerFor, newPartnerRef, type Partner, type Quote } from "./partners.js";
+import { preflight } from "../compliance/screening.js";
 
 /**
  * Gateway charges a fee per withdrawal (about $0.0035 on Arc at the time of writing),
@@ -146,6 +147,15 @@ export async function runPayouts(
     const fiat = plan.partner ? ` → ${plan.quote.currency} ${plan.quote.amount.toFixed(2)} @ ${plan.quote.fxRate.toFixed(4)}` : "";
     log(`   gross ${usdc(plan.gross)}  − platform fee ${usdc(plan.platformFee)}  − Gateway fee reserve ${usdc(plan.networkFee)}  = net ${usdc(plan.net)} USDC${fiat}`);
     log(`   on-chain recipient: ${plan.partner ? `${plan.partner.name} treasury` : "seller's own wallet"} ${plan.recipient}`);
+
+    // Compliance preflight (mock KYB + sanctions screening): a hit holds the payout, nothing moves.
+    const check = await preflight(db, seller);
+    if (!check.ok) {
+      log(`   HELD for compliance review: ${check.reasons.join("; ")}`);
+      outcomes.push({ ...base, result: "skipped", detail: `held: ${check.reasons.join("; ")}` });
+      continue;
+    }
+    log(`   compliance: KYB verified, ${check.walletsScreened} wallet(s) screened clear`);
 
     if (opts.dryRun) {
       outcomes.push({ ...base, result: "dry-run", detail: `would pay net ${usdc(plan.net)} USDC` });

@@ -23,15 +23,15 @@ licensed partner for India, a local rail, or SWIFT as the fallback.
 | GSTIN lookup | Mock data, real checksum | Format and check-digit validation are real |
 | India payout (USD→INR, e-FIRA, purpose code, T+2) | **Mock** (Phase 4) | Stands in for a licensed partner such as Xflow |
 | Local rail / SWIFT payouts | **Mock** (Phase 4) | Realistic delays, fees and failures |
-| KYB / sanctions screening | **Mock** (Phase 5) | Same interface a real vendor would use |
+| KYB / sanctions screening | **Mock** (Phase 5) | Runs before every payout; same interface a real vendor would use |
 
 ## Build phases
 
 1. **Payment rail** — paywalled seller API, buyer pays per call, reconciliation ✅
 2. **AI agent** — model decides which calls to make and pays within a budget ✅
 3. **Ledger** — Postgres ledger, per-seller balances, fiat-denominated statements ✅
-4. **Jurisdiction engine + payouts** — USDC / India partner / local rail / SWIFT routing ← *you are here*
-5. **Compliance trail** — agent → payment → call → seller → invoice → settlement → bank
+4. **Jurisdiction engine + payouts** — USDC / India partner / local rail / SWIFT routing ✅
+5. **Compliance trail** — agent → payment → call → seller → invoice → settlement → bank ← *you are here*
 6. **Dashboard + public link** — Next.js UI on Vercel
 
 ---
@@ -238,6 +238,38 @@ Expected: US **paid** in USDC; India and EU **processing** then paid; Kenya **fa
 npm run sellers:fix-bank && npm run payouts && npm run payouts:advance -- --fast-forward
 ```
 
+---
+
+## Phase 5: compliance trail
+
+One command produces the **evidence pack** an AD bank or auditor asks for when export proceeds
+started life as stablecoin payments — for any payout, end to end:
+
+1. **Why this route** — the jurisdiction engine's reasons
+2. **Screening** — seller KYB and sanctions screening of the seller's and every payer's wallet (mock)
+3. **Who decided to pay** — script buyer or AI agent; for agent calls, the task, model and the
+   agent's own reasoning before each payment (from `data/agent-runs.jsonl`)
+4. **Every paid call** — Circle payment nonce, Gateway transfer id, settlement status
+5. **Usage statement** — period, calls, USD amount, RBI purpose code
+6. **Payout** — fees, the on-chain USDC leg (Arc explorer link), partner reference, FX
+7. **The fiat document** — e-FIRA / SEPA / ACH / MT103 (mock)
+8. **Ledger events** behind it
+9. **Automated checks** — calls sum to the gross, all settled, fees add up, screened clear,
+   and for India: partner route, purpose code on the e-FIRA, INR = net × rate
+
+Each payout now records exactly which calls it paid for, and every payout is preceded by a
+compliance preflight: a KYB or sanctions hit **holds** the payout (nothing moves). To demo a hold,
+add a payer address to `SANCTIONS_BLOCKLIST=` in `.env`.
+
+```bash
+git pull
+npm run db:migrate                 # links existing payouts to their calls, adds screenings
+npm run trail -- --payout 1        # India payout: agent → calls → settlement → e-FIRA
+npm run trail -- --payout 5        # Kenya: shows the failed attempt, then the SWIFT payout
+npm run trail -- --payment 15      # find the payout behind one call (highlighted)
+npm run trail -- --all             # one file per payout in data/trails/
+```
+
 ## Scripts
 
 | Command | What it does |
@@ -260,6 +292,7 @@ npm run sellers:fix-bank && npm run payouts && npm run payouts:advance -- --fast
 | `npm run payouts` | Phase 4: route + pay out settled balances (`-- --dry-run` to preview) |
 | `npm run payouts:advance` | Phase 4: complete due fiat legs (`-- --fast-forward` for demos) |
 | `npm run sellers:fix-bank` | Phase 4: correct the Kenya seller's bank details |
+| `npm run trail` | Phase 5: compliance trail for a payout (`-- --payout <id>`, `--payment <id>`, `--all`) |
 | `npm run typecheck` | TypeScript check |
 
 ## Troubleshooting

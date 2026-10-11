@@ -21,7 +21,8 @@
     "sellers:fix-bank": "tsx src/scripts/sellers-fix-bank.ts",
     "buy:all": "tsx src/buyer/buy-all.ts",
     "payouts": "tsx src/payouts/run.ts",
-    "payouts:advance": "tsx src/payouts/advance.ts"
+    "payouts:advance": "tsx src/payouts/advance.ts",
+    "trail": "tsx src/scripts/trail.ts"
   },
   "author": "",
   "license": "ISC",

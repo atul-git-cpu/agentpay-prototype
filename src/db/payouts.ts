@@ -28,6 +28,17 @@ export async function createPayout(db: Database, p: NewPayout): Promise<number> 
        p.partner ?? null],
     );
     const id = rows[0].id;
+    // Link the settled calls this payout pays for; their total must equal the gross.
+    const linked = await sql<{ total: string }>(
+      `WITH l AS (UPDATE payments SET payout_id = $1
+                  WHERE seller_id = $2 AND payout_id IS NULL AND status IN ('confirmed', 'completed')
+                  RETURNING amount_atomic)
+       SELECT COALESCE(SUM(amount_atomic), 0)::text AS total FROM l`,
+      [id, p.sellerId],
+    );
+    if (BigInt(linked[0].total) !== p.grossAtomic) {
+      throw new Error(`Payout gross ${p.grossAtomic} does not match the settled calls ${linked[0].total} — ledger needs review`);
+    }
     await post(sql, `payout:${id}:initiated`, null, [
       [`seller:${p.sellerId}:available`, -p.grossAtomic],
       [`seller:${p.sellerId}:payout_in_flight`, p.grossAtomic],
@@ -80,6 +91,7 @@ export async function failPayout(db: Database, id: number, reason: string) {
     if (!p) throw new Error(`Payout ${id} not found`);
     if (p.status === "paid" || p.status === "failed") return p.status;
     await sql(`UPDATE payouts SET status = 'failed', failure_reason = $2, updated_at = now() WHERE id = $1`, [id, reason]);
+    await sql(`UPDATE payments SET payout_id = NULL WHERE payout_id = $1`, [id]); // calls go back to the next payout
     const gross = BigInt(p.gross_atomic);
     await post(sql, `payout:${id}:failed`, null, [
       [`seller:${p.seller_id}:payout_in_flight`, -gross],

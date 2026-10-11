@@ -79,3 +79,27 @@ CREATE TABLE IF NOT EXISTS payouts (
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS payouts_seller_idx ON payouts (seller_id, created_at);
+
+-- ---- Phase 5: compliance trail ----
+-- Which payout paid out each call (set when a payout is created, cleared if it fails).
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS payout_id INT REFERENCES payouts(id);
+CREATE INDEX IF NOT EXISTS payments_payout_idx ON payments (payout_id);
+-- One-off backfill for payouts made before Phase 5: only while nothing is linked yet,
+-- and only for sellers with exactly one successful payout (unambiguous).
+UPDATE payments p SET payout_id = (
+    SELECT po.id FROM payouts po WHERE po.seller_id = p.seller_id AND po.status IN ('processing', 'paid'))
+WHERE p.payout_id IS NULL AND p.status IN ('confirmed', 'completed')
+  AND (SELECT COUNT(*) FROM payouts po WHERE po.seller_id = p.seller_id AND po.status IN ('processing', 'paid')) = 1
+  AND NOT EXISTS (SELECT 1 FROM payments q WHERE q.payout_id IS NOT NULL);
+
+-- KYB and sanctions screening results (MOCK provider), latest per subject.
+CREATE TABLE IF NOT EXISTS screenings (
+  id           SERIAL PRIMARY KEY,
+  subject_type TEXT NOT NULL CHECK (subject_type IN ('wallet', 'business')),
+  subject      TEXT NOT NULL,                 -- lowercase wallet address, or seller:<id>
+  result       TEXT NOT NULL CHECK (result IN ('clear', 'verified', 'blocked', 'unverified')),
+  provider     TEXT NOT NULL,
+  detail       JSONB,
+  screened_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (subject_type, subject)
+);
