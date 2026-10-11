@@ -26,7 +26,26 @@ export function getDatabase(): Database {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) throw new Error("Missing DATABASE_URL in .env (your Neon connection string). See README Phase 3.");
 
-  const pool = new pg.Pool({ connectionString: url, max: 3 });
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(
+      "DATABASE_URL is not a valid URL. In .env it must be exactly\n" +
+        "  DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require\n" +
+        "with no quotes, no `psql` prefix and only one DATABASE_URL line.",
+    );
+  }
+  if (!/^postgres(ql)?:$/.test(parsed.protocol) || !parsed.hostname.includes(".")) {
+    throw new Error(
+      `DATABASE_URL looks wrong (protocol "${parsed.protocol}", host "${parsed.hostname}"). ` +
+        "Copy the Connection string from Neon's Connect dialog; the host ends in neon.tech.",
+    );
+  }
+  // Neon uses valid public certificates: verify them explicitly (also avoids pg's sslmode warning).
+  parsed.searchParams.delete("sslmode");
+  parsed.searchParams.delete("channel_binding");
+  const pool = new pg.Pool({ connectionString: parsed.toString(), ssl: { rejectUnauthorized: true }, max: 3 });
   const sql: Sql = async (text, params) => (await pool.query(text, params as unknown[])).rows;
 
   shared = {
