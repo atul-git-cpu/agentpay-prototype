@@ -12,14 +12,25 @@ import { readFile } from "node:fs/promises";
 import { GatewayClient } from "@circle-fin/x402-batching/client";
 import { formatUnits, type Hex } from "viem";
 import { config, CHAIN, SETTLEMENTS_FILE } from "../lib/config.js";
+import { SELLERS } from "../lib/services.js";
 import { getDatabase, hasDatabase } from "../db/client.js";
 import { applyStatus, ledgerImbalance, type PaymentStatus } from "../db/ledger.js";
 
 const gateway = new GatewayClient({ chain: CHAIN, privateKey: config.sellerKey() });
+const sellerClients = new Map<string, GatewayClient>();
 
-async function lookup(nonce: string): Promise<{ status: string; transferId?: string }> {
+/** Looks the transfer up as the seller it was paid to (falls back to the Phase 1 seller). */
+function clientFor(sellerAddress?: string): GatewayClient {
+  const profile = SELLERS.find((p) => process.env[p.addressEnv]?.toLowerCase() === sellerAddress?.toLowerCase());
+  const key = profile && process.env[profile.keyEnv];
+  if (!key) return gateway;
+  if (!sellerClients.has(key)) sellerClients.set(key, new GatewayClient({ chain: CHAIN, privateKey: key as Hex }));
+  return sellerClients.get(key)!;
+}
+
+async function lookup(nonce: string, sellerAddress?: string): Promise<{ status: string; transferId?: string }> {
   try {
-    const res = await gateway.searchTransfers({ nonce: nonce as Hex });
+    const res = await clientFor(sellerAddress).searchTransfers({ nonce: nonce as Hex });
     const t = res.transfers[0];
     return t ? { status: t.status, transferId: t.id } : { status: "not_found" };
   } catch (err) {
@@ -32,13 +43,13 @@ const bump = (k: string) => (counts[k] = (counts[k] ?? 0) + 1);
 
 if (hasDatabase()) {
   const db = getDatabase();
-  const open = await db.sql<{ id: number; nonce: string; amount_atomic: string; status: string }>(
-    `SELECT id, nonce, amount_atomic, status FROM payments
-     WHERE status NOT IN ('completed', 'failed') ORDER BY id`,
+  const open = await db.sql<{ id: number; nonce: string; amount_atomic: string; status: string; wallet_address: string }>(
+    `SELECT p.id, p.nonce, p.amount_atomic, p.status, s.wallet_address FROM payments p JOIN sellers s ON s.id = p.seller_id
+     WHERE p.status NOT IN ('completed', 'failed') ORDER BY p.id`,
   );
   console.log(`Reconciling ${open.length} open payment(s) in the ledger against Circle Gateway…\n`);
   for (const p of open) {
-    const { status, transferId } = await lookup(p.nonce);
+    const { status, transferId } = await lookup(p.nonce, p.wallet_address);
     const known = ["received", "batched", "confirmed", "completed", "failed"].includes(status);
     const now = known ? await applyStatus(db, p.id, status as PaymentStatus, transferId) : p.status;
     bump(known ? now : status);

@@ -16,7 +16,12 @@
     "db:migrate": "tsx src/scripts/db-migrate.ts",
     "db:import": "tsx src/scripts/db-import.ts",
     "ledger": "tsx src/scripts/ledger.ts",
-    "statement": "tsx src/scripts/statement.ts"
+    "statement": "tsx src/scripts/statement.ts",
+    "sellers:setup": "tsx src/scripts/sellers-setup.ts",
+    "sellers:fix-bank": "tsx src/scripts/sellers-fix-bank.ts",
+    "buy:all": "tsx src/buyer/buy-all.ts",
+    "payouts": "tsx src/payouts/run.ts",
+    "payouts:advance": "tsx src/payouts/advance.ts"
   },
   "author": "",
   "license": "ISC",

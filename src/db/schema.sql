@@ -45,3 +45,37 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
   UNIQUE (event_id, account)                              -- makes every posting idempotent
 );
 CREATE INDEX IF NOT EXISTS ledger_account_idx ON ledger_entries (account);
+
+-- ---- Phase 4: payouts ----
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS payout_preference TEXT NOT NULL DEFAULT 'fiat';
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS bank_details JSONB;
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS payout_reason TEXT;      -- why the engine chose the route
+
+-- One row per payout. Ledger events:
+--   initiated : -gross seller:<id>:available      +gross seller:<id>:payout_in_flight
+--   paid      : -gross seller:<id>:payout_in_flight +net seller:<id>:paid_out
+--               +platform_fee platform:fees        +network_fee network:gateway_fees
+--   failed    : -gross seller:<id>:payout_in_flight +gross seller:<id>:available
+CREATE TABLE IF NOT EXISTS payouts (
+  id                  SERIAL PRIMARY KEY,
+  seller_id           INT NOT NULL REFERENCES sellers(id),
+  method              TEXT NOT NULL CHECK (method IN ('usdc', 'india_partner', 'local_rail', 'swift')),
+  gross_atomic        NUMERIC(38,0) NOT NULL CHECK (gross_atomic > 0),
+  platform_fee_atomic NUMERIC(38,0) NOT NULL,
+  network_fee_atomic  NUMERIC(38,0) NOT NULL,
+  net_atomic          NUMERIC(38,0) NOT NULL,
+  payout_currency     TEXT NOT NULL,
+  fx_rate             NUMERIC(20,8),
+  payout_amount       NUMERIC(24,6),
+  onchain_recipient   TEXT,
+  onchain_tx          TEXT,
+  partner             TEXT,
+  partner_ref         TEXT,
+  status              TEXT NOT NULL CHECK (status IN ('initiated', 'processing', 'paid', 'failed')),
+  failure_reason      TEXT,
+  document            JSONB,
+  expected_at         TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS payouts_seller_idx ON payouts (seller_id, created_at);

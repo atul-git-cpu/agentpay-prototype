@@ -29,8 +29,8 @@ licensed partner for India, a local rail, or SWIFT as the fallback.
 
 1. **Payment rail** — paywalled seller API, buyer pays per call, reconciliation ✅
 2. **AI agent** — model decides which calls to make and pays within a budget ✅
-3. **Ledger** — Postgres ledger, per-seller balances, fiat-denominated statements ← *you are here*
-4. **Jurisdiction engine + payouts** — USDC / India partner / local rail / SWIFT routing
+3. **Ledger** — Postgres ledger, per-seller balances, fiat-denominated statements ✅
+4. **Jurisdiction engine + payouts** — USDC / India partner / local rail / SWIFT routing ← *you are here*
 5. **Compliance trail** — agent → payment → call → seller → invoice → settlement → bank
 6. **Dashboard + public link** — Next.js UI on Vercel
 
@@ -147,7 +147,8 @@ has three balances, matching how Circle actually settles:
 |---|---|
 | **pending** | Buyer has paid; Circle hasn't settled the batch yet (`received` / `batched`) |
 | **available** | Circle settled it (`confirmed` / `completed`); ready to pay out |
-| **paid out** | Sent to the seller (Phase 4) |
+| **in flight** | Payout started; the partner's fiat leg isn't done yet (Phase 4) |
+| **paid out** | Received by the seller, net of fees (Phase 4) |
 
 Every event posts balanced entries, every posting is idempotent (re-running reconciliation
 can't double-count), statuses never move backwards, and `npm run ledger` checks that all
@@ -179,6 +180,64 @@ npm run statement -- --seller 1 --from 2026-10-01 --to 2026-10-31
 A fiat-denominated statement (USD + indicative INR, by buyer and by day, with the purpose code),
 saved to `data/statements/`. This is what the INR payout in Phase 4 is matched against.
 
+---
+
+## Phase 4: jurisdiction engine + payouts
+
+The marketplace grows to **four sellers in four jurisdictions**, and each is paid out the way
+its country allows:
+
+| Seller (sample) | Country | Prefers | Engine's route | On-chain leg (real) | Fiat leg (mock) |
+|---|---|---|---|---|---|
+| Hyderabad GST Data Services | IN | fiat | **India partner** (mandatory: stablecoins are VDAs) | USDC → partner treasury | INR, e-FIRA, purpose code P0807, T+2 |
+| Austin TaxRate Labs | US | USDC | **USDC direct** | USDC → seller's wallet | — |
+| Lisboa VAT Check Lda | PT | fiat | **Local rail: SEPA Instant** | USDC → SEPA partner treasury | EUR, ~1 minute |
+| Nairobi KRA PIN Data Ltd | KE | fiat | **SWIFT fallback** (no rules / rail configured) | USDC → SWIFT partner treasury | USD MT103, T+2 |
+
+Rules, in order: restricted + licensed partner → partner; permitted + prefers USDC → USDC;
+local rail exists → local rail; otherwise SWIFT. Unknown countries never get stablecoin payouts.
+See `src/payouts/jurisdiction.ts` (a simplified reading of each regime — not legal advice).
+
+**Every payout moves real testnet USDC**: a Circle Gateway withdrawal on Arc, from the seller's
+Gateway balance to either the seller's own wallet or the partner's treasury address. Only what
+happens after the partner receives it (FX, bank credit, documents) is mocked.
+
+Fees per payout: platform fee (USDC 0.1%, India partner 1%, local rail 0.5%, SWIFT 0.8%) plus a
+**0.004 USDC reserve for Gateway's withdrawal fee** (about $0.0035 on Arc). That's why payouts are
+batched behind a threshold — with real volumes the threshold should be ≥ $0.35 so the network fee
+stays under 1%. The demo uses 0.005 so a few cents of traffic can pay out.
+
+Ledger events: `initiated` (available → in flight), then `paid` (in flight → paid out + platform
+fees + Gateway fees) or `failed` (back to available). The Kenya seller's bank details are
+deliberately wrong, so its first payout **fails at partner pre-validation, before any money moves**.
+
+### 1. Set up the sellers (one-time)
+```bash
+git pull && npm install
+npm run db:migrate       # adds the payouts table
+npm run sellers:setup    # wallets for US/EU/KE sellers + partner treasuries, registers all 4, gas top-ups
+```
+Then **restart the marketplace** (`Ctrl+C`, `npm run seller`) — it now lists four paid services.
+
+### 2. Generate traffic and settle it
+```bash
+npm run buy:all          # ~16 paid calls across the US, EU and Kenya sellers
+# wait ~1 minute for Gateway to batch-settle
+npm run reconcile        # pending -> available
+```
+
+### 3. Pay out
+```bash
+npm run payouts -- --dry-run          # see routes, fees and amounts first
+npm run payouts                       # real Gateway withdrawals
+npm run payouts:advance -- --fast-forward   # complete the fiat legs now (skip T+2 in a demo)
+npm run ledger -- --docs              # balances, payouts and documents (e-FIRA, MT103, ...)
+```
+Expected: US **paid** in USDC; India and EU **processing** then paid; Kenya **failed**. Fix it:
+```bash
+npm run sellers:fix-bank && npm run payouts && npm run payouts:advance -- --fast-forward
+```
+
 ## Scripts
 
 | Command | What it does |
@@ -194,8 +253,13 @@ saved to `data/statements/`. This is what the INR payout in Phase 4 is matched a
 | `npm run agent` | Phase 2: run the AI agent |
 | `npm run db:migrate` | Phase 3: create ledger tables, register the seller |
 | `npm run db:import` | Phase 3: import payments from the Phase 1-2 log |
-| `npm run ledger` | Phase 3: seller balances + integrity check |
+| `npm run ledger` | Seller balances, payouts, fees + integrity check (`-- --docs`) |
 | `npm run statement` | Phase 3: fiat-denominated usage statement |
+| `npm run sellers:setup` | Phase 4: US/EU/KE sellers, partner treasuries, gas top-ups |
+| `npm run buy:all` | Phase 4: paid calls across the marketplace |
+| `npm run payouts` | Phase 4: route + pay out settled balances (`-- --dry-run` to preview) |
+| `npm run payouts:advance` | Phase 4: complete due fiat legs (`-- --fast-forward` for demos) |
+| `npm run sellers:fix-bank` | Phase 4: correct the Kenya seller's bank details |
 | `npm run typecheck` | TypeScript check |
 
 ## Troubleshooting
