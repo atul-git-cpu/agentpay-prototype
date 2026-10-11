@@ -122,7 +122,15 @@ app.get("/v1/pricing", (_req, res) => {
   });
 });
 
-app.listen(config.port, () => {
+app.listen(config.port, (err?: Error) => {
+  if (err) {
+    const inUse = (err as NodeJS.ErrnoException).code === "EADDRINUSE";
+    console.error(inUse
+      ? `Port ${config.port} is already in use — the marketplace is probably still running in another terminal.\n` +
+        "Stop it there with Ctrl+C, or run:  pkill -f src/seller/server.ts   then start again."
+      : `Could not start the marketplace: ${err.message}`);
+    process.exit(1);
+  }
   console.log(`Marketplace listening on ${config.sellerBaseUrl}  (catalogue: GET /v1/catalog)`);
   for (const s of live) console.log(`  ${s.price.padEnd(7)} ${s.path.padEnd(28)} ${s.seller} [${s.country}]`);
   if (live.length < SERVICES.length) console.log("  (run `npm run sellers:setup` to add the US, EU and Kenya sellers)");
