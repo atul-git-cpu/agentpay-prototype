@@ -13,6 +13,8 @@
 import { appendFile } from "node:fs/promises";
 import { parseUnits, formatUnits } from "viem";
 import { config, AGENT_RUNS_FILE } from "../lib/config.js";
+import { getDatabase, hasDatabase } from "../db/client.js";
+import { saveAgentRun } from "../db/sync.js";
 import { createCirclePayer } from "../lib/circle-payer.js";
 import { chat, type ChatMessage, type ToolDefinition } from "./llm.js";
 
@@ -160,4 +162,13 @@ console.log("—".repeat(60));
 console.log(`Paid calls: ${paidCalls}  |  Spent: ${formatUnits(spent, 6)} USDC of ${config.agentBudgetUsdc} budget`);
 log({ type: "end", paidCalls, spentUsdc: formatUnits(spent, 6), finalAnswer });
 await appendFile(AGENT_RUNS_FILE, JSON.stringify({ run: events }) + "\n");
+if (hasDatabase()) {
+  try {
+    const db = getDatabase();
+    await saveAgentRun(db.sql, events as { at: string; type: string }[]);
+    await db.close();
+  } catch (err) {
+    console.log(`(run not saved to the database: ${(err as Error).message})`);
+  }
+}
 console.log("Run log: data/agent-runs.jsonl  |  Seller-side: `npm run reconcile`");

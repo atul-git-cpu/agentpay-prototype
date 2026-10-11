@@ -43,9 +43,14 @@ export function getDatabase(): Database {
     );
   }
   // Neon uses valid public certificates: verify them explicitly (also avoids pg's sslmode warning).
+  // sslmode=disable is only for a local test database.
+  const noSsl = parsed.searchParams.get("sslmode") === "disable";
   parsed.searchParams.delete("sslmode");
   parsed.searchParams.delete("channel_binding");
-  const pool = new pg.Pool({ connectionString: parsed.toString(), ssl: { rejectUnauthorized: true }, max: 3 });
+  const pool = new pg.Pool({
+    connectionString: parsed.toString(), ssl: noSsl ? false : { rejectUnauthorized: true }, max: 3,
+    idleTimeoutMillis: 10_000,
+  });
   const sql: Sql = async (text, params) => (await pool.query(text, params as unknown[])).rows;
 
   shared = {

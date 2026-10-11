@@ -103,3 +103,24 @@ CREATE TABLE IF NOT EXISTS screenings (
   screened_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (subject_type, subject)
 );
+
+-- ---- Phase 6: data the public dashboard reads (it has no access to local files or keys) ----
+-- AI agent runs, imported from data/agent-runs.jsonl (and written directly by new runs).
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id           SERIAL PRIMARY KEY,
+  started_at   TIMESTAMPTZ NOT NULL,
+  agent        TEXT NOT NULL,                 -- lowercase wallet address
+  model        TEXT,
+  task         TEXT,
+  paid_calls   INT NOT NULL DEFAULT 0,
+  spent_usdc   TEXT,
+  final_answer TEXT,
+  events       JSONB NOT NULL,
+  UNIQUE (started_at, agent)
+);
+-- Human-readable names for wallets (buyer, agent, sellers, partner treasuries).
+CREATE TABLE IF NOT EXISTS wallet_labels (
+  address TEXT PRIMARY KEY,                   -- lowercase
+  label   TEXT NOT NULL,
+  kind    TEXT NOT NULL                       -- buyer | agent | seller | partner
+);

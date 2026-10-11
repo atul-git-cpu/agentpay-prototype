@@ -11,12 +11,17 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { getDatabase } from "../db/client.js";
 import { buildTrail, renderTrail } from "../compliance/trail.js";
 import { screen } from "../compliance/screening.js";
+import { syncAgentRuns, syncWalletLabels } from "../db/sync.js";
+import { AGENT_RUNS_FILE } from "../lib/config.js";
 
 const arg = (name: string) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 ? process.argv[i + 1] : undefined;
 };
 const db = getDatabase();
+// Agent runs and wallet names live locally; copy them in so the trail (and dashboard) can show them.
+await syncAgentRuns(db.sql, AGENT_RUNS_FILE);
+await syncWalletLabels(db.sql);
 
 let ids: number[] = [];
 let highlight: number | undefined;

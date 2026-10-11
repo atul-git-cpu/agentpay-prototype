@@ -6,3 +6,6 @@ data/*.jsonl
 *.dat
 data/statements/
 data/trails/
+.next/
+next-env.d.ts
+*.tsbuildinfo

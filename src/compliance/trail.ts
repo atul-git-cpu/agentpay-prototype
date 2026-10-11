@@ -9,11 +9,10 @@
  *
  * `buildTrail` returns data (reused by the Phase 6 dashboard); `renderTrail` makes markdown.
  */
-import { readFile } from "node:fs/promises";
 import { formatUnits } from "viem";
-import type { Database } from "../db/client.js";
-import { AGENT_RUNS_FILE } from "../lib/config.js";
-import { payerLabels, shortAddress } from "../lib/payers.js";
+import type { Database, Sql } from "../db/client.js";
+
+export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export const explorerTx = (hash: string) => `https://testnet.arcscan.app/tx/${hash}`;
 const usd = (a: bigint | string) => formatUnits(BigInt(a), 6);
@@ -30,42 +29,41 @@ export type AgentContext = {
   runSkipped: number;
 };
 
-/** Maps payment nonce -> the agent run that made it. Missing file = no agent payments. */
-async function agentIndex(): Promise<Map<string, AgentContext>> {
+/** Maps payment nonce -> the agent run that made it (from the agent_runs table). */
+export async function agentIndex(sql: Sql, nonces?: string[]): Promise<Map<string, AgentContext>> {
   const map = new Map<string, AgentContext>();
-  let text = "";
-  try {
-    text = await readFile(AGENT_RUNS_FILE, "utf8");
-  } catch {
-    return map;
-  }
-  for (const line of text.split("\n").filter(Boolean)) {
-    let events: AgentEvent[];
-    try {
-      events = (JSON.parse(line) as { run: AgentEvent[] }).run;
-    } catch {
-      continue;
-    }
-    const start = events.find((e) => e.type === "start");
-    const end = events.find((e) => e.type === "end");
-    const skipped = events.filter((e) => e.type === "cache_hit").length;
+  const rows = await sql<{ started_at: Date; task: string | null; model: string | null; paid_calls: number; events: AgentEvent[] }>(
+    nonces
+      ? `SELECT started_at, task, model, paid_calls, events FROM agent_runs r
+         WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(r.events) e
+                       WHERE e->>'type' = 'payment' AND lower(e->>'nonce') = ANY($1::text[]))`
+      : `SELECT started_at, task, model, paid_calls, events FROM agent_runs`,
+    nonces ? [nonces.map((n) => n.toLowerCase())] : [],
+  );
+  for (const r of rows) {
+    const skipped = r.events.filter((e) => e.type === "cache_hit").length;
     let lastThought: string | null = null;
-    for (const e of events) {
+    for (const e of r.events) {
       if (e.type === "thought") lastThought = String(e.text);
       if (e.type === "payment" && typeof e.nonce === "string") {
         map.set(e.nonce.toLowerCase(), {
-          runStartedAt: String(start?.at ?? e.at),
-          task: String(start?.task ?? ""),
-          model: String(start?.model ?? ""),
+          runStartedAt: new Date(r.started_at).toISOString(),
+          task: r.task ?? "",
+          model: r.model ?? "",
           reasoning: lastThought,
-          input: String(e.gstin ?? ""),
-          runPaidCalls: Number(end?.paidCalls ?? 0),
+          input: String(e.gstin ?? e.input ?? ""),
+          runPaidCalls: r.paid_calls,
           runSkipped: skipped,
         });
       }
     }
   }
   return map;
+}
+
+export async function walletLabels(sql: Sql): Promise<Map<string, string>> {
+  const rows = await sql<{ address: string; label: string }>(`SELECT address, label FROM wallet_labels`);
+  return new Map(rows.map((r) => [r.address, r.label]));
 }
 
 export type Trail = Awaited<ReturnType<typeof buildTrail>>;
@@ -107,8 +105,8 @@ export async function buildTrail(db: Database, payoutId: number) {
     [eventIds, calls.map((c) => c.id)],
   );
 
-  const agents = await agentIndex();
-  const labels = payerLabels();
+  const agents = await agentIndex(db.sql, calls.map((c) => c.nonce));
+  const labels = await walletLabels(db.sql);
   const callRows = calls.map((c) => ({
     ...c,
     payerLabel: labels.get(c.payer.toLowerCase()) ?? shortAddress(c.payer),

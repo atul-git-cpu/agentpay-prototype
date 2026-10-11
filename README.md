@@ -32,7 +32,7 @@ licensed partner for India, a local rail, or SWIFT as the fallback.
 3. **Ledger** — Postgres ledger, per-seller balances, fiat-denominated statements ✅
 4. **Jurisdiction engine + payouts** — USDC / India partner / local rail / SWIFT routing ✅
 5. **Compliance trail** — agent → payment → call → seller → invoice → settlement → bank ✅
-6. **Dashboard + public link** — Next.js UI on Vercel ← *next*
+6. **Dashboard + public link** — Next.js UI on Vercel ← *you are here*
 
 ---
 
@@ -270,6 +270,39 @@ npm run trail -- --payment 15      # find the payout behind one call (highlighte
 npm run trail -- --all             # one file per payout in data/trails/
 ```
 
+---
+
+## Phase 6: the public dashboard (Vercel)
+
+A read-only website anyone can open: the marketplace and its live route map, every seller's
+balances, all payouts with their on-chain links, each payout's full **compliance trail**, and the
+AI agent's runs (task, reasoning, what it paid for). It's a Next.js app in `app/` that reuses the
+ledger and trail code in `src/`.
+
+**Safe to share:** it only reads. It connects with a separate **read-only** database login
+(SELECT only, read-only transactions), so your owner password and wallet keys never leave the
+Codespace, and nothing on the site can move money.
+
+### 1. Prepare the database (in the Codespace)
+```bash
+git pull && npm install
+npm run dashboard:setup
+```
+This copies the agent runs and wallet names into Postgres and creates the read-only login. Its
+connection string is saved in `.env` as `DASHBOARD_DATABASE_URL` (not printed).
+
+Optional preview inside the Codespace: `npm run build && DATABASE_URL="<the DASHBOARD_DATABASE_URL value>" npm start -- -p 3001`.
+
+### 2. Deploy on Vercel
+1. [vercel.com/new](https://vercel.com/new) → **Import** `agentpay-prototype` (allow Vercel access to the repo if asked).
+2. Framework preset: **Next.js** (detected). Leave build settings as they are.
+3. **Environment Variables**: name `DATABASE_URL`, value = the `DASHBOARD_DATABASE_URL` line from `.env`
+   (the read-only one — never the owner URL).
+4. **Deploy**. Your public link is `https://<project>.vercel.app`.
+
+Every push to `main` redeploys. New payments, payouts and agent runs show up within ~15 seconds;
+after a new agent run, run `npm run dashboard:setup` (or `npm run trail`) to sync it.
+
 ## Scripts
 
 | Command | What it does |
@@ -293,6 +326,8 @@ npm run trail -- --all             # one file per payout in data/trails/
 | `npm run payouts:advance` | Phase 4: complete due fiat legs (`-- --fast-forward` for demos) |
 | `npm run sellers:fix-bank` | Phase 4: correct the Kenya seller's bank details |
 | `npm run trail` | Phase 5: compliance trail for a payout (`-- --payout <id>`, `--payment <id>`, `--all`) |
+| `npm run dashboard:setup` | Phase 6: sync agent runs + wallet names, create the read-only DB login |
+| `npm run build` / `npm start` | Phase 6: build / run the dashboard (`npm run web` for dev on port 3001) |
 | `npm run typecheck` | TypeScript check |
 
 ## Troubleshooting
