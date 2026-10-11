@@ -4,9 +4,9 @@ import { Nav } from "./_components/nav";
 import { REPO } from "./_lib/format";
 
 export const metadata: Metadata = {
-  title: "AgentPay — per-call payments, paid out by jurisdiction",
+  title: "AgentPay | Per-call payments for AI agents",
   description:
-    "Prototype on Circle's testnet: AI agents pay per API call in USDC; each seller is paid out the way their country allows — INR via a licensed partner in India, USDC, SEPA or SWIFT elsewhere.",
+    "Prototype on Circle's testnet: AI agents pay per API call in USDC; each seller is paid out the way their country allows: INR via a licensed partner in India, USDC, SEPA or SWIFT elsewhere.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="top">
           <div className="wrap">
-            <a className="brand" href="/">AgentPay<small>Circle testnet prototype</small></a>
+            <a className="brand" href="/">AgentPay<small>on Circle testnet</small></a>
             <Nav />
           </div>
         </header>
@@ -32,8 +32,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </main>
         <footer>
           <div className="wrap">
-            <span>Testnet only — no real money moves. On-chain legs are real on Arc Testnet; bank legs, KYB and screening are mocks.</span>
-            <a href={REPO}>Source on GitHub</a>
+            <span>
+              A prototype by Atul, built on Circle&apos;s test network. No real money moves: the USDC transfers are real test
+              transactions, and the bank side is simulated.
+            </span>
+            <span className="links"><a href="/how">What&apos;s real and what&apos;s simulated</a><a href={REPO}>Code on GitHub</a></span>
           </div>
         </footer>
       </body>

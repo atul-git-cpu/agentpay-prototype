@@ -118,30 +118,30 @@ export async function buildTrail(db: Database, payoutId: number) {
   const gross = BigInt(payout.gross);
   const net = BigInt(payout.net);
   const checks: { ok: boolean; text: string }[] = [
-    { ok: calls.length > 0 && sumCalls === gross, text: `Paid calls add up to the payout gross (${calls.length} calls = ${usd(sumCalls)} USDC)` },
-    { ok: calls.every((c) => ["confirmed", "completed"].includes(c.status)), text: "Every call was settled by Circle Gateway before payout" },
-    { ok: calls.every((c) => c.gateway_transfer_id), text: "Every call matched to a Gateway transfer record (by nonce)" },
-    { ok: gross - BigInt(payout.platform_fee) - BigInt(payout.network_fee) === net, text: "Gross − platform fee − network fee = net" },
-    { ok: Boolean(payout.onchain_tx), text: "On-chain USDC leg recorded" },
-    { ok: screenings.some((s) => s.subject_type === "business" && s.result === "verified"), text: "Seller KYB verified" },
+    { ok: calls.length > 0 && sumCalls === gross, text: `The ${calls.length} paid calls add up to exactly what this payout covers (${usd(sumCalls)} USDC)` },
+    { ok: calls.every((c) => ["confirmed", "completed"].includes(c.status)), text: "Circle had settled every call before the seller was paid" },
+    { ok: calls.every((c) => c.gateway_transfer_id), text: "Every call matches a payment record at Circle" },
+    { ok: gross - BigInt(payout.platform_fee) - BigInt(payout.network_fee) === net, text: "Earnings minus fees equal the amount sent" },
+    { ok: Boolean(payout.onchain_tx), text: "The USDC transfer is recorded on the blockchain" },
+    { ok: screenings.some((s) => s.subject_type === "business" && s.result === "verified"), text: "The seller is a verified business" },
     {
       ok: screenings.filter((s) => s.subject_type === "wallet").length > 0 && screenings.filter((s) => s.subject_type === "wallet").every((s) => s.result === "clear"),
-      text: "Seller and all payer wallets screened clear",
+      text: "The seller's and every buyer's wallet passed sanctions screening",
     },
-    { ok: payout.status === "paid" && Boolean(payout.document), text: "Fiat/USDC leg completed with a document" },
+    { ok: payout.status === "paid" && Boolean(payout.document), text: "The seller was paid and there is a document to prove it" },
     {
       ok: ledger.length > 0 && ledger.reduce((a, l) => a + BigInt(l.amount_atomic), 0n) === 0n,
-      text: "Ledger events for this payout and its calls balance to zero",
+      text: "The ledger balances for this payout and its calls",
     },
   ];
   if (payout.country === "IN") {
     const doc = (payout.document ?? {}) as Record<string, unknown>;
     checks.push(
-      { ok: payout.method === "india_partner", text: "India seller paid via licensed partner, not stablecoin" },
-      { ok: Boolean(payout.purpose_code) && doc.purposeCode === payout.purpose_code, text: `Purpose code ${payout.purpose_code ?? "—"} on the e-FIRA` },
+      { ok: payout.method === "india_partner", text: "The Indian seller was paid in rupees through a licensed partner, not in stablecoin" },
+      { ok: Boolean(payout.purpose_code) && doc.purposeCode === payout.purpose_code, text: `The e-FIRA carries RBI purpose code ${payout.purpose_code ?? "(missing)"}` },
       {
         ok: Math.abs(Number(usd(net)) * Number(payout.fx_rate) - Number(payout.payout_amount)) < 0.01,
-        text: "INR credited = net USD × partner rate",
+        text: "Rupees credited match the USD amount at the partner's exchange rate",
       },
     );
   }

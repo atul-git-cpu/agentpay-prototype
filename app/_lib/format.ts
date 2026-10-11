@@ -4,7 +4,7 @@ export const REPO = "https://github.com/atul-git-cpu/agentpay-prototype";
 
 /** "0.017780" -> "0.01778", keeps at least 2 decimals. */
 export function amt(v: string | number | null | undefined, min = 2): string {
-  if (v === null || v === undefined) return "—";
+  if (v === null || v === undefined) return "-";
   const n = Number(v);
   if (!Number.isFinite(n)) return String(v);
   const s = n.toFixed(6).replace(/0+$/, "");
@@ -14,7 +14,7 @@ export function amt(v: string | number | null | undefined, min = 2): string {
 
 export const SYMBOL: Record<string, string> = { INR: "₹", EUR: "€", USD: "$" };
 export function fiat(currency: string, amount: string | number | null): string {
-  if (amount === null) return "—";
+  if (amount === null) return "-";
   const n = Number(amount);
   const sym = SYMBOL[currency];
   const digits = n < 1 ? 4 : 2;
@@ -40,7 +40,7 @@ export function route(method: string, currency: string) {
 }
 
 export function callPath(resource: string | null): string {
-  if (!resource) return "—";
+  if (!resource) return "-";
   try {
     return decodeURIComponent(new URL(resource, "http://x").pathname);
   } catch {
@@ -50,3 +50,27 @@ export function callPath(resource: string | null): string {
 
 /** The model writes light markdown; show it as plain text (keep line breaks, drop ** and table pipes' noise). */
 export const plain = (t: string) => t.replace(/\*\*/g, "").replace(/^\|?[-| ]+\|?$/gm, "").trim();
+
+/** Cleans text stored by earlier runs: no em dashes or code-style arrows on screen. */
+export const tidy = (t: string) =>
+  t.replace(/\s*—\s*/g, " - ").replace(/\s*->\s*/g, ", so ").replace(/\s*\((mock|sample)\)/g, "").replace(/\s+/g, " ").trim();
+
+/** Payment and payout statuses in words a reader understands. */
+const STATUS: Record<string, string> = {
+  received: "Paid, settling", batched: "Settling", confirmed: "Settled", completed: "Settled", failed: "Failed",
+  initiated: "Starting", processing: "With the bank", paid: "Paid out",
+};
+export const statusLabel = (s: string) => STATUS[s] ?? s;
+
+/** Labels for the fields of a payout document (e-FIRA, SEPA, MT103, receipt). */
+const DOC_LABELS: Record<string, string> = {
+  firaNumber: "e-FIRA number", issuedBy: "Issued by", remitter: "Sent by", beneficiary: "Paid to",
+  beneficiaryAccount: "Bank account", purposeCode: "RBI purpose code", foreignCurrencyAmount: "Amount received (USD)",
+  exchangeRate: "Exchange rate", inrCredited: "Rupees credited", valueDate: "Credited on", linkedStatement: "Matches statement",
+  stablecoinLeg: "USDC leg", partnerReference: "Partner reference", endToEndId: "SEPA reference", creditor: "Paid to",
+  creditorIban: "IBAN", amount: "Amount", uetr: "SWIFT tracking number (UETR)", beneficiaryBic: "Bank (BIC)",
+  charges: "Charges", trace: "ACH trace number", wallet: "Wallet", network: "Network", transaction: "Transaction",
+};
+export const docLabel = (k: string) => DOC_LABELS[k] ?? k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
+export const docTitle = (t: string) =>
+  tidy(t).replace("SEPA Instant credit transfer", "SEPA Instant transfer").replace("SWIFT MT103", "SWIFT transfer (MT103)");

@@ -1,26 +1,36 @@
 import { REPO } from "../_lib/format";
 
-export const metadata = { title: "How it works — AgentPay" };
+export const metadata = { title: "How it works | AgentPay" };
 
 const STEPS = [
-  ["A buyer or AI agent calls a paid API", "The API answers 402 Payment Required with a price. The caller signs a USDC authorisation (x402) and retries; Circle Gateway verifies it and the API responds. No gas, no on-chain transaction per call."],
-  ["Circle batches and settles", "Gateway nets thousands of tiny payments into periodic on-chain settlements on Arc. Reconciliation matches every call to Circle's transfer record by its payment nonce."],
-  ["The ledger tracks each seller's money", "A double-entry ledger in Postgres moves each call from pending to available once Circle confirms it. Every posting is idempotent and the books always sum to zero."],
-  ["The jurisdiction engine picks a route", "India restricts stablecoins as export proceeds, so Indian sellers are paid in rupees through a licensed partner with an e-FIRA and purpose code. US sellers who want USDC get USDC. Others get a local rail (SEPA, ACH) or SWIFT."],
-  ["Compliance runs before money moves", "Seller KYB and sanctions screening of every paying wallet run before each payout. A hit holds the payout; a bad bank account fails at the partner before anything moves on-chain."],
-  ["The payout leaves Circle Gateway", "A Gateway withdrawal sends USDC on Arc to the seller's wallet or the partner's treasury. The partner converts and pays the bank leg, and its document (e-FIRA, SEPA, MT103) is attached to the payout's trail."],
+  ["A buyer or AI agent calls a paid API", "The API replies with its price. The caller signs a USDC payment and asks again, and Circle confirms the payment before the API answers. There's no blockchain fee per call, so a call can cost $0.002."],
+  ["Circle settles the payments", "Circle groups many small payments together and settles them on its Arc test network every few minutes. We match every call to Circle's record of it."],
+  ["Our ledger keeps each seller's balance", "Each call is first counted as pending, then as available once Circle settles it. The books are double-entry, so they always balance."],
+  ["The seller's country decides how they're paid", "India doesn't let exporters receive stablecoins, so Indian sellers are paid in rupees through a licensed partner, with an e-FIRA. A US seller who wants USDC gets USDC. Others get a local bank transfer (SEPA, ACH) or SWIFT."],
+  ["Checks run before any money moves", "We verify the seller's business and screen every wallet that paid them against sanctions lists. A bad bank account is caught by the partner before anything is sent."],
+  ["The payout goes out", "USDC leaves Circle on the blockchain, either to the seller's wallet or to the payout partner. The partner pays the seller's bank and sends back a document (e-FIRA, SEPA confirmation or MT103), which we attach to the payout."],
 ] as const;
 
-const REAL = [
-  ["Per-call USDC payments (x402)", "Real", "Circle Gateway Nanopayments, Arc Testnet"],
-  ["Buyer deposits, balances, settlement status", "Real", "Gateway Wallet contract and Gateway API"],
-  ["AI agent and its wallet", "Real", "Gemini (free API) with a Circle developer-controlled wallet"],
-  ["Ledger, statements, compliance trail", "Real", "Postgres (Neon)"],
-  ["USDC leg of every payout", "Real", "Gateway withdrawal on Arc Testnet"],
-  ["India partner: FX, INR credit, e-FIRA", "Mock", "Stands in for a licensed cross-border partner such as Xflow"],
-  ["SEPA, ACH, SWIFT bank legs", "Mock", "Realistic timing, fees and a failure case"],
-  ["KYB and sanctions screening", "Mock", "Same interface a real vendor would plug into"],
-  ["The sellers' API data", "Mock", "GSTIN check digits and VAT / KRA formats are validated for real"],
+const PARTS = [
+  ["Paying per call in USDC", true, "Circle Gateway Nanopayments on Arc testnet"],
+  ["Deposits, balances and settlement", true, "Circle's Gateway contract and API"],
+  ["The AI agent and its wallet", true, "Google Gemini, with a wallet managed by Circle"],
+  ["Ledger, statements and payout records", true, "Postgres database"],
+  ["USDC sent in each payout", true, "Withdrawal from Circle Gateway on Arc testnet"],
+  ["Rupee payout with e-FIRA (India)", false, "Stands in for a licensed partner such as Xflow"],
+  ["SEPA, ACH and SWIFT bank transfers", false, "Realistic timings, fees and one failure case"],
+  ["Business verification and sanctions screening", false, "Built so a real provider can plug in"],
+  ["The sellers' API answers", false, "GSTIN check digits and VAT and KRA PIN formats are really checked"],
+] as const;
+
+const TERMS = [
+  ["USDC", "A digital dollar issued by Circle. 1 USDC is worth 1 US dollar."],
+  ["Circle Gateway", "Circle's service that lets someone hold one USDC balance and make many tiny payments without a blockchain fee each time."],
+  ["Arc", "Circle's blockchain. This prototype uses its test network, so no real money is involved."],
+  ["Payout partner", "A licensed company that receives USDC and pays the seller in their own currency, through their bank."],
+  ["e-FIRA", "The certificate an Indian bank issues when foreign money arrives. Exporters need it to show the earnings came from abroad."],
+  ["Purpose code", "The code the Reserve Bank of India uses to record why money came in. P0807 covers information and data services."],
+  ["SEPA, ACH, SWIFT", "Bank transfer systems: SEPA in Europe, ACH in the US, and SWIFT for international transfers everywhere else."],
 ] as const;
 
 export default function How() {
@@ -28,9 +38,9 @@ export default function How() {
     <>
       <h1>How it works</h1>
       <p className="lede">
-        AI agents are starting to buy data and tools one call at a time. Cards can&apos;t charge $0.002, and stablecoins solve
-        that — but many sellers, India&apos;s first among them, can&apos;t legally receive export earnings in stablecoins. This
-        prototype keeps the stablecoin where it works (the per-call payment) and pays each seller out the way their country allows.
+        AI agents are starting to buy data one API call at a time. A card can&apos;t charge $0.002, but a stablecoin can. The
+        catch is that many sellers, starting with those in India, can&apos;t legally receive their export earnings in
+        stablecoins. So we use USDC where it works best, for paying per call, and pay each seller the way their country allows.
       </p>
       <ol className="chain" style={{ ["--c" as string]: "var(--r-trunk)" }}>
         {STEPS.map(([title, body]) => (
@@ -38,23 +48,31 @@ export default function How() {
         ))}
       </ol>
 
-      <h2>What&apos;s real and what&apos;s mocked</h2>
-      <p className="sub">Everything runs on testnets. Nothing here moves real money.</p>
+      <h2>What&apos;s real and what&apos;s simulated</h2>
+      <p className="sub">Everything runs on test networks, so no real money is involved anywhere.</p>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Part</th><th>Status</th><th>How</th></tr></thead>
+          <thead><tr><th>Part</th><th>Real or simulated</th><th>How</th></tr></thead>
           <tbody>
-            {REAL.map(([part, status, how]) => (
-              <tr key={part}><td>{part}</td><td><span className={`status ${status === "Real" ? "paid" : "processing"}`}>{status}</span></td><td>{how}</td></tr>
+            {PARTS.map(([part, real, how]) => (
+              <tr key={part}><td>{part}</td><td><span className={`status ${real ? "paid" : "processing"}`}>{real ? "Real" : "Simulated"}</span></td><td>{how}</td></tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <h2>Terms used on this site</h2>
+      <dl className="kv terms">
+        {TERMS.map(([term, meaning]) => (
+          <div key={term} style={{ display: "contents" }}><dt>{term}</dt><dd>{meaning}</dd></div>
+        ))}
+      </dl>
+
       <p className="note">
-        The jurisdiction rules are a simplified reading of each country&apos;s regime for a prototype, not legal advice. The RBI
-        purpose code (P0807) should be confirmed with the AD bank.
+        The country rules here are a simplified reading of each regime for a prototype. They aren&apos;t legal advice, and
+        the purpose code should be confirmed with the bank.
       </p>
-      <p>Code, setup steps and the full build log are on <a href={REPO}>GitHub</a>.</p>
+      <p>The code and setup steps are on <a href={REPO}>GitHub</a>.</p>
     </>
   );
 }

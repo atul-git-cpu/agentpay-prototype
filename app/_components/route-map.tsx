@@ -1,12 +1,12 @@
 import type { SellerView } from "../_lib/data";
-import { amt, fiat, route, COUNTRY } from "../_lib/format";
+import { amt, fiat, route, COUNTRY, docTitle } from "../_lib/format";
 
 const COLOR: Record<string, string> = {
   inr: "var(--r-inr)", usdc: "var(--r-usdc)", sepa: "var(--r-sepa)", ach: "var(--r-ach)", swift: "var(--r-swift)",
 };
 
 export const shortDoc = (d: string) =>
-  d.replace(" (mock)", "").replace("SEPA Instant credit transfer", "SEPA credit").replace("SWIFT MT103", "MT103")
+  docTitle(d).replace("SEPA Instant transfer", "SEPA transfer").replace("SWIFT transfer (MT103)", "MT103")
     .replace("USDC payout receipt", "on-chain receipt");
 
 /**
@@ -22,7 +22,7 @@ export function RouteList({ sellers }: { sellers: SellerView[] }) {
         const lp = s.lastPayout;
         return (
           <li key={s.id} className={`r-${r.key}${lp?.status === "failed" ? " failed" : ""}`}>
-            <b>{s.name.replace(" (sample)", "")}</b>, {COUNTRY[s.country] ?? s.country}
+            <a href={lp ? `/payouts/${lp.id}` : "/payouts"}><b>{s.name.replace(" (sample)", "")}</b></a>, {COUNTRY[s.country] ?? s.country}
             <span>
               {r.label}.{" "}
               {lp && lp.status !== "failed"
@@ -66,20 +66,22 @@ export function RouteMap({ sellers, calls, volume }: { sellers: SellerView[]; ca
         const out =
           payout && payout.status !== "failed"
             ? payout.currency === "USDC"
-              ? `${amt(s.paidOut)} USDC paid out`
+              ? `${amt(s.paidOut)} USDC to their wallet`
               : `${fiat(payout.currency, payout.amount)} paid out${payout.document ? `, ${shortDoc(payout.document)}` : ""}`
             : failed
-              ? `Last payout failed: ${payout?.failure ?? ""}`
+              ? "Last payout failed, money returned"
               : `${amt(s.available)} USDC waiting for payout`;
         return (
           <g key={s.id}>
             <path d={path} fill="none" stroke={c} strokeWidth="8" strokeLinecap="round" strokeDasharray={failed ? "14 10" : undefined} />
             <circle cx={W - 30} cy={y} r="9" fill="#fff" stroke={c} strokeWidth="5" />
-            <text x={endX + 8} y={y - 16} className="lane-label">
-              {s.name.replace(" (sample)", "")} — {COUNTRY[s.country] ?? s.country}
-            </text>
+            <a href={payout ? `/payouts/${payout.id}` : "/payouts"}>
+              <text x={endX + 8} y={y - 16} className="lane-label">
+                {s.name.replace(" (sample)", "")}, {COUNTRY[s.country] ?? s.country}
+              </text>
+            </a>
             <text x={endX + 8} y={y + 26} className="lane-sub">
-              {r.short}: {out.length > 56 ? out.slice(0, 54) + "…" : out}
+              {r.short}: {out}
             </text>
           </g>
         );
@@ -91,7 +93,7 @@ export function RouteMap({ sellers, calls, volume }: { sellers: SellerView[]; ca
       <text x={srcX - 12} y={midY + 36} className="node-sub">{calls} calls, {amt(volume)} USDC</text>
       <rect x={gwX - 16} y={midY - 16} width="32" height="32" rx="6" fill="#fff" stroke="var(--r-trunk)" strokeWidth="5" />
       <text x={gwX - 40} y={midY - 30} className="node-label">Circle Gateway</text>
-      <text x={gwX - 40} y={midY + 40} className="node-sub">batched, settled on Arc</text>
+      <text x={gwX - 40} y={midY + 40} className="node-sub">settles on Arc</text>
     </svg>
   );
 }

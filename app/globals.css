@@ -155,3 +155,25 @@ footer .wrap { display: flex; gap: 24px; flex-wrap: wrap; justify-content: space
   .map .flow { stroke-dasharray: 2 14; animation: flow 1.6s linear infinite; }
   @keyframes flow { to { stroke-dashoffset: -16; } }
 }
+
+/* Where to start: three plain entry points */
+.start { list-style: none; padding: 0; margin: 26px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 28px; }
+.start li { padding: 12px 0 0; border-top: 3px solid var(--ink); }
+.start a { font-weight: 700; font-size: 1.05rem; }
+.start span { display: block; color: var(--muted); font-size: 0.93rem; margin-top: 2px; }
+@media (max-width: 760px) { .start { grid-template-columns: 1fr; gap: 16px; } }
+
+.name { font-weight: 600; }
+.fees { max-width: 78ch; margin-top: 12px; }
+.crumbs { margin: 0 0 10px; }
+.label { font-weight: 600; margin: 14px 0 4px; }
+
+/* Payout summary under the title */
+.summary { display: flex; flex-wrap: wrap; gap: 14px 40px; margin: 6px 0 18px; }
+.summary dt { color: var(--muted); font-size: 0.88rem; }
+.summary dd { margin: 2px 0 0; font-size: 1.15rem; font-weight: 600; }
+.summary dd.ok { color: var(--ok); } .summary dd.bad { color: var(--bad); }
+
+.terms { max-width: 900px; }
+
+footer .links { display: flex; gap: 20px; flex-wrap: wrap; }

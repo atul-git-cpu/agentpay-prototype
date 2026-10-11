@@ -3,11 +3,11 @@ export function DbError({ error }: { error: unknown }) {
   const missing = /DATABASE_URL/.test(msg);
   return (
     <div className="empty" role="alert">
-      <h3>The dashboard can't reach its database</h3>
+      <h3>This page can&apos;t load its data right now</h3>
       <p>
         {missing
-          ? "DATABASE_URL isn't set. In Vercel, add it under Settings → Environment Variables (use the read-only connection string from `npm run dashboard:setup`), then redeploy."
-          : `Connecting failed: ${msg}`}
+          ? "The site isn't connected to its database. In Vercel, add DATABASE_URL under Settings, Environment Variables (use the read-only connection string from npm run dashboard:setup), then redeploy."
+          : `The database didn't respond: ${msg}. Try again in a minute.`}
       </p>
     </div>
   );

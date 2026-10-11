@@ -8,6 +8,8 @@ import { formatUnits } from "viem";
 import { getDatabase } from "../../src/db/client";
 import { sellerBalances } from "../../src/db/ledger";
 import { buildTrail, walletLabels } from "../../src/compliance/trail";
+import { routeFor } from "../../src/payouts/jurisdiction";
+import { SERVICES } from "../../src/lib/services";
 
 const TTL_MS = 15_000;
 const cache = new Map<string, { at: number; value: Promise<unknown> }>();
@@ -26,7 +28,8 @@ export const usdc = (atomic: bigint | string | number) => formatUnits(BigInt(ato
 const db = () => getDatabase();
 
 export type SellerView = {
-  id: number; name: string; country: string; method: string; currency: string; reason: string;
+  id: number; name: string; country: string; method: string; currency: string; reasons: string[];
+  service: { title: string; price: string } | null;
   calls: number; earned: string; pending: string; available: string; inFlight: string; paidOut: string;
   lastPayout: { id: number; status: string; currency: string; amount: string | null; document: string | null; failure: string | null } | null;
 };
@@ -36,7 +39,8 @@ export function getOverview() {
     const sql = db().sql;
     const [balances, sellers, earned, lastPayouts, totals, accounts, recent, labels] = await Promise.all([
       sellerBalances(sql),
-      sql<{ id: number; payout_currency: string; payout_reason: string | null }>(`SELECT id, payout_currency, payout_reason FROM sellers`),
+      sql<{ id: number; payout_currency: string; payout_preference: "usdc" | "fiat"; country: string; wallet_address: string }>(
+        `SELECT id, payout_currency, payout_preference, country, wallet_address FROM sellers`),
       sql<{ seller_id: number; total: string }>(`SELECT seller_id, SUM(amount_atomic)::text AS total FROM payments WHERE status <> 'failed' GROUP BY 1`),
       sql<{ seller_id: number; id: number; status: string; payout_currency: string; payout_amount: string | null; doc: string | null; failure_reason: string | null }>(
         `SELECT DISTINCT ON (seller_id) seller_id, id, status, payout_currency, payout_amount::text AS payout_amount,
@@ -62,7 +66,12 @@ export function getOverview() {
       const lp = lastBy.get(b.sellerId);
       return {
         id: b.sellerId, name: b.name, country: b.country, method: b.payoutMethod,
-        currency: extra.get(b.sellerId)?.payout_currency ?? "", reason: extra.get(b.sellerId)?.payout_reason ?? "",
+        currency: extra.get(b.sellerId)?.payout_currency ?? "",
+        reasons: routeFor(b.country, extra.get(b.sellerId)?.payout_preference ?? "fiat").reasons,
+        service: (() => {
+          const svc = SERVICES.find((x) => x.seller.country === b.country);
+          return svc ? { title: svc.title, price: svc.price } : null;
+        })(),
         calls: b.calls, earned: usdc(earnedBy.get(b.sellerId) ?? "0"), pending: usdc(b.pending), available: usdc(b.available),
         inFlight: usdc(b.inFlight), paidOut: usdc(b.paidOut),
         lastPayout: lp ? { id: lp.id, status: lp.status, currency: lp.payout_currency, amount: lp.payout_amount, document: lp.doc, failure: lp.failure_reason } : null,
