@@ -1,40 +1,130 @@
-# AgentPay prototype
+# AgentPay
 
-**Per-call API payments for AI agents, with seller payouts that follow each seller's jurisdiction.**
+**AI agents pay per API call in USDC. Each seller gets paid the way their country allows.**
 
-Any buyer or AI agent pays per API call in USDC (Circle Gateway Nanopayments, x402).
-Every call is metered and reconciled into a seller ledger. Each seller is then paid
-out in the form their country allows: USDC where permitted, INR with an e-FIRA via a
-licensed partner for India, a local rail, or SWIFT as the fallback.
+**Live demo: [agentpay-prototype.vercel.app](https://agentpay-prototype.vercel.app)** (read-only, runs on Circle's test network)
 
-> Testnet only. No real money moves. Wallets created by this repo hold testnet USDC.
+[![AgentPay dashboard: buyers and an AI agent pay through Circle Gateway, then each seller is paid out by their own route](docs/dashboard.png)](https://agentpay-prototype.vercel.app)
 
-## What's real and what's mocked
+## In 30 seconds
 
-| Layer | Status | How |
+**The problem.** AI agents are starting to buy data and tools one API call at a time. A card can't charge $0.002 a
+call, but a stablecoin can. The catch: many sellers can't legally receive export earnings in stablecoins. In India,
+stablecoins are virtual digital assets, so an Indian API seller has to be paid in rupees, through an authorised bank,
+with an e-FIRA.
+
+**What this does.** Buyers and an AI agent pay sellers per call in USDC through Circle Gateway Nanopayments. Every
+call is reconciled into a double-entry ledger. When a seller is paid out, a jurisdiction engine picks the route their
+country allows:
+
+| Seller (sample) | Country | Paid out as |
+|---|---|---|
+| Hyderabad GST Data Services | India | Rupees through a licensed partner, with an e-FIRA and RBI purpose code |
+| Austin TaxRate Labs | US | USDC straight to the seller's wallet |
+| Lisboa VAT Check Lda | Portugal | Euros by SEPA Instant |
+| Nairobi KRA PIN Data Ltd | Kenya | US dollars by SWIFT (no local route configured) |
+
+Every payout produces a **compliance trail**: who decided to pay (including the AI agent's own reasoning), each paid
+call and Circle's settlement record, the checks run, the on-chain transfer and the bank document. It's the record a
+bank or auditor would ask for.
+
+## See it working
+
+- [Overview](https://agentpay-prototype.vercel.app): the route map, seller balances and the latest paid calls
+- [Payout #1 to India](https://agentpay-prototype.vercel.app/payouts/1): from the AI agent's decision to rupees in the seller's bank, 12 of 12 checks passed
+- [Payout #4](https://agentpay-prototype.vercel.app/payouts/4) and [#5](https://agentpay-prototype.vercel.app/payouts/5): a payout rejected for bad bank details before any money moved, then paid after the fix
+- [What the AI agent paid for](https://agentpay-prototype.vercel.app/agent): the task, what it said, and what each call cost
+
+[![Payout #1: the compliance trail for the India payout](docs/payout-india.png)](https://agentpay-prototype.vercel.app/payouts/1)
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Buyer or AI agent] -- "pays $0.002 per call (x402)" --> G[Circle Gateway<br/>settles on Arc]
+    G --> L[Ledger<br/>pending, then available]
+    L --> J{Jurisdiction engine<br/>+ KYB and sanctions checks}
+    J -- India --> IN[Licensed partner<br/>INR + e-FIRA]
+    J -- US --> US[USDC to seller's wallet]
+    J -- Portugal --> EU[SEPA Instant, EUR]
+    J -- Kenya --> SW[SWIFT, USD]
+```
+
+1. **Pay per call.** The API answers `402 Payment Required` with a price. The caller signs a USDC authorisation and
+   retries; Circle Gateway verifies it before the API responds. No gas per call.
+2. **Settle and reconcile.** Circle batches the payments and settles them on Arc. Each call is matched to Circle's
+   transfer record by its payment nonce, and moves from *pending* to *available* in the ledger.
+3. **Route by jurisdiction.** If the country restricts stablecoins and a licensed partner exists, the partner pays in
+   local currency. If stablecoins are allowed and the seller wants USDC, they get USDC. Otherwise a local rail (SEPA,
+   ACH), with SWIFT as the fallback.
+4. **Check, then pay.** Seller KYB and sanctions screening of every paying wallet run first. Then a real Circle Gateway
+   withdrawal sends USDC to the seller's wallet or the partner's treasury, and the partner pays the bank leg.
+
+## Key findings
+
+- **Circle's withdrawal fee shapes the product.** Each payout costs about $0.0035 to withdraw from Gateway on Arc. On
+  this test run that came to 0.016 USDC in Circle fees against 0.000388 USDC in platform fees. Payouts have to wait
+  for a minimum balance (around $0.35) to keep the network fee under 1%.
+- **Compliance has to sit in the payout, not the payment.** USDC is the right tool for paying per call anywhere.
+  What changes by country is how the seller may receive it, so that's where the routing and the paperwork belong.
+- **An agent's budget must be enforced in code.** The AI agent chose sensibly (it skipped a duplicate and an invalid
+  input), but the spending cap and call limit are checked by the wallet code, not left to the model.
+
+## Results from the testnet run
+
+27 paid calls across 4 sellers (0.058 USDC, 4 of them paid by the AI agent), turned into 5 payouts on 4 different routes,
+including 1 deliberate failure and its recovery. All 4 successful payouts moved real testnet USDC on Arc, every
+compliance check passed, and the ledger balances to zero.
+
+## What's real and what's simulated
+
+| Part | Real or simulated | How |
 |---|---|---|
 | Per-call USDC payments (x402) | **Real** | Circle Gateway Nanopayments on Arc Testnet (`@circle-fin/x402-batching`) |
-| Buyer deposit + balances | **Real** | Gateway Wallet contract + Gateway testnet API |
-| Settlement + reconciliation by nonce | **Real** | Settle hooks + `searchTransfers` |
-| USDC payout to permitted sellers | **Real** (Phase 4) | Gateway withdrawal |
-| AI agent that decides and pays | **Real** (Phase 2) | Free model API (Gemini; Groq backup) via one adapter |
-| Agent wallet | **Real** (Phase 2) | Circle developer-controlled wallet |
-| Ledger + statements | **Real** (Phase 3) | Double-entry ledger in Postgres (Neon) |
-| GSTIN lookup | Mock data, real checksum | Format and check-digit validation are real |
-| India payout (USD→INR, e-FIRA, purpose code, T+2) | **Mock** (Phase 4) | Stands in for a licensed partner such as Xflow |
-| Local rail / SWIFT payouts | **Mock** (Phase 4) | Realistic delays, fees and failures |
-| KYB / sanctions screening | **Mock** (Phase 5) | Runs before every payout; same interface a real vendor would use |
+| Deposits, balances, settlement status | **Real** | Gateway Wallet contract and Gateway testnet API |
+| Reconciliation by payment nonce | **Real** | Settle hooks and `searchTransfers` |
+| AI agent and its wallet | **Real** | Gemini (free API, Groq as backup) with a Circle developer-controlled wallet |
+| Ledger, statements, compliance trail | **Real** | Double-entry ledger in Postgres (Neon) |
+| USDC leg of every payout | **Real** | Circle Gateway withdrawal on Arc Testnet |
+| India payout (USD to INR, e-FIRA, purpose code, T+2) | Simulated | Stands in for a licensed partner such as Xflow |
+| SEPA, ACH, SWIFT bank legs | Simulated | Realistic timing, fees and a failure case |
+| KYB and sanctions screening | Simulated | Runs before every payout, behind the interface a real vendor would use |
+| The sellers' API answers | Simulated | GSTIN check digits and VAT / KRA PIN formats are validated for real |
+
+> Testnet only. No real money moves. The country rules are a simplified reading of each regime for a prototype, not
+> legal advice; the RBI purpose code (P0807) should be confirmed with the AD bank.
+
+## Tech stack
+
+TypeScript on Node 22, Circle Gateway Nanopayments (`@circle-fin/x402-batching`), Circle developer-controlled wallets,
+Arc Testnet, viem, Express, Postgres on Neon, Gemini through its OpenAI-compatible API, and Next.js on Vercel.
+
+## Repository layout
+
+| Path | What's in it |
+|---|---|
+| `src/seller/` | The marketplace server: four paid APIs behind Circle's x402 middleware |
+| `src/buyer/`, `src/agent/` | The script buyer and the AI agent that pay per call |
+| `src/recon/` | Reconciliation against Circle Gateway |
+| `src/db/` | Schema, double-entry ledger, payouts, sync |
+| `src/payouts/` | Jurisdiction engine, payout engine, simulated payout partners |
+| `src/compliance/` | Screening and the compliance trail |
+| `app/` | The public dashboard (Next.js) |
 
 ## Build phases
 
-1. **Payment rail** — paywalled seller API, buyer pays per call, reconciliation ✅
-2. **AI agent** — model decides which calls to make and pays within a budget ✅
-3. **Ledger** — Postgres ledger, per-seller balances, fiat-denominated statements ✅
-4. **Jurisdiction engine + payouts** — USDC / India partner / local rail / SWIFT routing ✅
-5. **Compliance trail** — agent → payment → call → seller → invoice → settlement → bank ✅
-6. **Dashboard + public link** — Next.js UI on Vercel ✅
+1. **Payment rail:** paywalled seller API, buyer pays per call, reconciliation ✅
+2. **AI agent:** a model decides which calls to make and pays within a budget ✅
+3. **Ledger:** Postgres ledger, per-seller balances, fiat-denominated statements ✅
+4. **Jurisdiction engine and payouts:** USDC, India partner, local rail and SWIFT routes ✅
+5. **Compliance trail:** agent, payment, call, seller, statement, settlement, bank ✅
+6. **Dashboard and public link:** Next.js on Vercel ✅
 
 ---
+
+# Run it yourself
+
+Everything below is the step-by-step setup, phase by phase, in a GitHub Codespace.
 
 ## Phase 1: run it in GitHub Codespaces
 
@@ -56,21 +146,21 @@ Open **https://faucet.circle.com**, choose **Arc Testnet** and **USDC**, and pas
 ```bash
 npm run deposit
 ```
-After this, every API call is paid with an off-chain signature — no gas per call.
+After this, every API call is paid with an off-chain signature - no gas per call.
 
 ### 5. Start the seller API (terminal 1)
 ```bash
 npm run seller
 ```
 
-### 6. Pay per call (terminal 2 — click **+** in the terminal panel)
+### 6. Pay per call (terminal 2 - click **+** in the terminal panel)
 ```bash
 npm run buy
 ```
 Expected output, roughly:
 ```
 Seller says: GSTIN validation (India) at $0.002 per call
-#1 36ABCPK1234F1Z6  paid 0.002 USDC  ->  VALID — Telangana, Individual / Proprietor
+#1 36ABCPK1234F1Z6  paid 0.002 USDC  ->  VALID - Telangana, Individual / Proprietor
 ...
 7 paid calls, 0.014 USDC spent.
 ```
@@ -162,7 +252,7 @@ In `.env`: `DATABASE_URL=<your Neon connection string, starting with postgresql:
 npm run db:migrate
 ```
 Registers the Phase 1 seller as an **Indian** seller paid in **INR** via the licensed-partner
-route, with RBI purpose code **P0807** (information/data services — confirm with the AD bank).
+route, with RBI purpose code **P0807** (information/data services - confirm with the AD bank).
 
 ### 3. Import earlier payments and reconcile
 ```bash
@@ -190,13 +280,13 @@ its country allows:
 | Seller (sample) | Country | Prefers | Engine's route | On-chain leg (real) | Fiat leg (mock) |
 |---|---|---|---|---|---|
 | Hyderabad GST Data Services | IN | fiat | **India partner** (mandatory: stablecoins are VDAs) | USDC → partner treasury | INR, e-FIRA, purpose code P0807, T+2 |
-| Austin TaxRate Labs | US | USDC | **USDC direct** | USDC → seller's wallet | — |
+| Austin TaxRate Labs | US | USDC | **USDC direct** | USDC → seller's wallet | - |
 | Lisboa VAT Check Lda | PT | fiat | **Local rail: SEPA Instant** | USDC → SEPA partner treasury | EUR, ~1 minute |
 | Nairobi KRA PIN Data Ltd | KE | fiat | **SWIFT fallback** (no rules / rail configured) | USDC → SWIFT partner treasury | USD MT103, T+2 |
 
 Rules, in order: restricted + licensed partner → partner; permitted + prefers USDC → USDC;
 local rail exists → local rail; otherwise SWIFT. Unknown countries never get stablecoin payouts.
-See `src/payouts/jurisdiction.ts` (a simplified reading of each regime — not legal advice).
+See `src/payouts/jurisdiction.ts` (a simplified reading of each regime - not legal advice).
 
 **Every payout moves real testnet USDC**: a Circle Gateway withdrawal on Arc, from the seller's
 Gateway balance to either the seller's own wallet or the partner's treasury address. Only what
@@ -204,7 +294,7 @@ happens after the partner receives it (FX, bank credit, documents) is mocked.
 
 Fees per payout: platform fee (USDC 0.1%, India partner 1%, local rail 0.5%, SWIFT 0.8%) plus a
 **0.004 USDC reserve for Gateway's withdrawal fee** (about $0.0035 on Arc). That's why payouts are
-batched behind a threshold — with real volumes the threshold should be ≥ $0.35 so the network fee
+batched behind a threshold - with real volumes the threshold should be ≥ $0.35 so the network fee
 stays under 1%. The demo uses 0.005 so a few cents of traffic can pay out.
 
 Ledger events: `initiated` (available → in flight), then `paid` (in flight → paid out + platform
@@ -217,7 +307,7 @@ git pull && npm install
 npm run db:migrate       # adds the payouts table
 npm run sellers:setup    # wallets for US/EU/KE sellers + partner treasuries, registers all 4, gas top-ups
 ```
-Then **restart the marketplace** (`Ctrl+C`, `npm run seller`) — it now lists four paid services.
+Then **restart the marketplace** (`Ctrl+C`, `npm run seller`) - it now lists four paid services.
 
 ### 2. Generate traffic and settle it
 ```bash
@@ -243,18 +333,18 @@ npm run sellers:fix-bank && npm run payouts && npm run payouts:advance -- --fast
 ## Phase 5: compliance trail
 
 One command produces the **evidence pack** an AD bank or auditor asks for when export proceeds
-started life as stablecoin payments — for any payout, end to end:
+started life as stablecoin payments - for any payout, end to end:
 
-1. **Why this route** — the jurisdiction engine's reasons
-2. **Screening** — seller KYB and sanctions screening of the seller's and every payer's wallet (mock)
-3. **Who decided to pay** — script buyer or AI agent; for agent calls, the task, model and the
+1. **Why this route** - the jurisdiction engine's reasons
+2. **Screening** - seller KYB and sanctions screening of the seller's and every payer's wallet (mock)
+3. **Who decided to pay** - script buyer or AI agent; for agent calls, the task, model and the
    agent's own reasoning before each payment (from `data/agent-runs.jsonl`)
-4. **Every paid call** — Circle payment nonce, Gateway transfer id, settlement status
-5. **Usage statement** — period, calls, USD amount, RBI purpose code
-6. **Payout** — fees, the on-chain USDC leg (Arc explorer link), partner reference, FX
-7. **The fiat document** — e-FIRA / SEPA / ACH / MT103 (mock)
+4. **Every paid call** - Circle payment nonce, Gateway transfer id, settlement status
+5. **Usage statement** - period, calls, USD amount, RBI purpose code
+6. **Payout** - fees, the on-chain USDC leg (Arc explorer link), partner reference, FX
+7. **The fiat document** - e-FIRA / SEPA / ACH / MT103 (mock)
 8. **Ledger events** behind it
-9. **Automated checks** — calls sum to the gross, all settled, fees add up, screened clear,
+9. **Automated checks** - calls sum to the gross, all settled, fees add up, screened clear,
    and for India: partner route, purpose code on the e-FIRA, INR = net × rate
 
 Each payout now records exactly which calls it paid for, and every payout is preceded by a
@@ -297,7 +387,7 @@ Optional preview inside the Codespace: `npm run build && DATABASE_URL="<the DASH
 1. [vercel.com/new](https://vercel.com/new) → **Import** `agentpay-prototype` (allow Vercel access to the repo if asked).
 2. Framework preset: **Next.js** (detected). Leave build settings as they are.
 3. **Environment Variables**: name `DATABASE_URL`, value = the `DASHBOARD_DATABASE_URL` line from `.env`
-   (the read-only one — never the owner URL).
+   (the read-only one - never the owner URL).
 4. **Deploy**. Your public link is `https://<project>.vercel.app`.
 
 Every push to `main` redeploys. New payments, payouts and agent runs show up within ~15 seconds;
@@ -332,10 +422,10 @@ after a new agent run, run `npm run dashboard:setup` (or `npm run trail`) to syn
 
 ## Troubleshooting
 
-- **`Missing BUYER_PRIVATE_KEY`** — run `npm run wallet:new`.
-- **Deposit says wallet has 0 USDC** — the faucet hasn't arrived yet; wait a minute.
-- **Gateway balance still 0 after deposit** — indexing lag; wait ~30s, then `npm run balance`.
-- **`fetch failed` on paid calls** — the seller can't reach `gateway-api-testnet.circle.com`; check your network.
+- **`Missing BUYER_PRIVATE_KEY`** - run `npm run wallet:new`.
+- **Deposit says wallet has 0 USDC** - the faucet hasn't arrived yet; wait a minute.
+- **Gateway balance still 0 after deposit** - indexing lag; wait ~30s, then `npm run balance`.
+- **`fetch failed` on paid calls** - the seller can't reach `gateway-api-testnet.circle.com`; check your network.
 
 ## Security
 
